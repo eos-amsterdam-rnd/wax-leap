@@ -94,3 +94,7 @@ Snapshot unit tests are not ported to WAX properly and need to be re-done.
 Merging https://github.com/AntelopeIO/leap/pull/124
 [3.1] Allow for larger subjective CPU billing amounts
 
+## Release `v3.1.1wax01`
+
+Merged with Leap 3.1.1
+
