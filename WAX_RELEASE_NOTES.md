@@ -98,3 +98,7 @@ Merging https://github.com/AntelopeIO/leap/pull/124
 
 Merged with Leap 3.1.1
 
+## Release `v3.1.2wax01`
+
+Merged with Leap 3.1.2
+
