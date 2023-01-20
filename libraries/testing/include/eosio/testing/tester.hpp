@@ -386,7 +386,7 @@ namespace eosio { namespace testing {
 
          static genesis_state default_genesis() {
             genesis_state genesis;
-            genesis.initial_timestamp = fc::time_point::from_iso_string("2020-01-01T00:00:00.000");
+            genesis.initial_timestamp = fc::time_point::from_iso_string("2019-06-30T00:00:00.000");
             genesis.initial_key = get_public_key( config::system_account_name, "active" );
 
             return genesis;
