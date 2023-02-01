@@ -242,6 +242,13 @@ You can invoke them by running `ctest` from a terminal in your Leap build direct
 ctest -L "long_running_tests"
 ```
 
+Alternatively, use the prebuilt docker image to get up and running with develompment envirement quickly:
+1. Start the interactive shell: `make dev-docker-start`
+1. Run all the tests: `make test`
+1. Compile: `make compile`
+1. Run test: `make test`
+1. Run WASM Spec test only : `make test-wasm`
+
 ### Step 5 - Install
 Once you have [built](#step-3---build-the-source-code) Leap and [tested](#step-4---test) your build, you can install Leap on your system. Don't forget to omit `sudo` if you are running in a docker container.
 
