@@ -65,11 +65,11 @@ cd ~/Downloads
 ```
 Clone Leap using either HTTPS...
 ```bash
-git clone --recursive https://github.com/AntelopeIO/leap.git
+git clone --recursive https://github.com/worldwide-asset-exchange/leap.git
 ```
 ...or SSH:
 ```bash
-git clone --recursive git@github.com:AntelopeIO/leap.git
+git clone --recursive git@github.com:worldwide-asset-exchange/leap.git
 ```
 
 > ℹ️ **HTTPS vs. SSH Clone** ℹ️  
@@ -81,7 +81,7 @@ cd leap
 ```
 
 ### Step 2 - Checkout Release Tag or Branch
-Choose which [release](https://github.com/AntelopeIO/leap/releases) or [branch](#branches) you would like to build, then check it out. If you are not sure, use the [latest release](https://github.com/AntelopeIO/leap/releases/latest). For example, if you want to build release 3.1.2 then you would check it out using its tag, `v3.1.2`. In the example below, replace `v0.0.0` with your selected release tag accordingly:
+Choose which [release](https://github.com/worldwide-asset-exchange/leap/releases) or [branch](#branches) you would like to build, then check it out. If you are not sure, use the [latest release](https://github.com/worldwide-asset-exchange/leap/releases/latest). For example, if you want to build release 3.1.2 then you would check it out using its tag, `v3.1.2`. In the example below, replace `v0.0.0` with your selected release tag accordingly:
 ```bash
 git fetch --all --tags
 git checkout v0.0.0
