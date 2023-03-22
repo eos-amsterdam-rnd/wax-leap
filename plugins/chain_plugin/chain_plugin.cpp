@@ -358,6 +358,8 @@ void chain_plugin::set_program_options(options_description& cli, options_descrip
           "extract build environment information as JSON, write into specified file, and exit")
          ("force-all-checks", bpo::bool_switch()->default_value(false),
           "do not skip any validation checks while replaying blocks (useful for replaying blocks from untrusted source)")
+         ("skip-all-checks", bpo::bool_switch()->default_value(false),
+          "skip all checks that can be skipped while processing blocks")
          ("disable-replay-opts", bpo::bool_switch()->default_value(false),
           "disable optimizations that specifically target replay")
          ("replay-blockchain", bpo::bool_switch()->default_value(false),
@@ -804,6 +806,7 @@ void chain_plugin::plugin_initialize(const variables_map& options) {
          my->chain_config->wasm_runtime = *my->wasm_runtime;
 
       my->chain_config->force_all_checks = options.at( "force-all-checks" ).as<bool>();
+      my->chain_config->skip_all_checks = options.at( "skip-all-checks" ).as<bool>();
       my->chain_config->disable_replay_opts = options.at( "disable-replay-opts" ).as<bool>();
       my->chain_config->contracts_console = options.at( "contracts-console" ).as<bool>();
       my->chain_config->allow_ram_billing_in_notify = options.at( "disable-ram-billing-notify-checks" ).as<bool>();

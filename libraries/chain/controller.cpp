@@ -2167,7 +2167,7 @@ struct controller_impl {
          }
 
          emit( self.pre_accepted_block, b );
-         const bool skip_validate_signee = !conf.force_all_checks;
+         const bool skip_validate_signee = conf.skip_all_checks || !conf.force_all_checks;
 
          auto bsp = std::make_shared<block_state>(
                         *head,
@@ -3200,7 +3200,7 @@ bool controller::light_validation_allowed() const {
 
 
 bool controller::skip_auth_check() const {
-   return light_validation_allowed();
+   return my->conf.skip_all_checks || light_validation_allowed();
 }
 
 bool controller::skip_trx_checks() const {
