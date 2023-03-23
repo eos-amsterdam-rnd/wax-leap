@@ -1,6 +1,6 @@
 cmake_minimum_required( VERSION 3.8 )
 
-project( leap )
+project( wax-leap )
 include(CTest) # suppresses DartConfiguration.tcl error
 enable_testing()
 
@@ -15,7 +15,7 @@ set( CXX_STANDARD_REQUIRED ON)
 
 set(VERSION_MAJOR 4)
 set(VERSION_MINOR 0)
-set(VERSION_PATCH 0)
+set(VERSION_PATCH 0wax00)
 set(VERSION_SUFFIX rc1)
 
 if(VERSION_SUFFIX)
