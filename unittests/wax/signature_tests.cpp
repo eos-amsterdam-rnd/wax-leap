@@ -10,7 +10,7 @@
 #include <string>
 #include <vector>
 
-#include <contracts.hpp>
+#include <test_contracts.hpp>
 #include "rsa_signer.hpp"
 
 using namespace eosio;
@@ -52,8 +52,8 @@ struct wax_fixture: public EOSIO_FIXTURE {
         try {
             create_accounts({ account_n });
 
-            set_code(account_n, eosio::testing::contracts::wax_rsa_wasm());
-            set_abi(account_n, eosio::testing::contracts::wax_rsa_abi().data());
+            set_code(account_n, eosio::testing::test_contracts::wax_rsa_wasm());
+            set_abi(account_n, eosio::testing::test_contracts::wax_rsa_abi().data());
 
             produce_block();
         }
