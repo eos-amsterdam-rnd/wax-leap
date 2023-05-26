@@ -114,3 +114,7 @@ Merged with Leap 3.2.0
 ## Release v4.0.0wax01
 
 Merged with Leap 4.0.0
+
+## Release v4.0.1wax01
+
+Merged with Leap 4.0.1
