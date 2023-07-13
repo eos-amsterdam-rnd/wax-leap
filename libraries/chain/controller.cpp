@@ -423,7 +423,8 @@ struct controller_impl {
          EOS_ASSERT( root_id == log_head_id, fork_database_exception, "fork database root does not match block log head" );
       } else {
          EOS_ASSERT( fork_db.root()->block_num == lib_num, fork_database_exception,
-                     "empty block log expects the first appended block to build off a block that is not the fork database root. root block number: ${block_num}, lib: ${lib_num}", ("block_num", fork_db.root()->block_num) ("lib_num", lib_num) );
+                     "The first block ${lib_num} when starting with an empty block log should be the block after fork database root ${bn}.",
+                     ("lib_num", lib_num)("bn", fork_db.root()->block_num) );
       }
 
       const auto fork_head = fork_db_head();
@@ -558,7 +559,10 @@ struct controller_impl {
          ilog( "no irreversible blocks need to be replayed" );
       }
 
-      if( !except_ptr && !check_shutdown() && fork_db.head() ) {
+      if (snapshot_head_block != 0 && !blog_head) {
+         // loading from snapshot without a block log so fork_db can't be considered valid
+         fork_db.reset( *head );
+      } else if( !except_ptr && !check_shutdown() && fork_db.head() ) {
          auto head_block_num = head->block_num;
          auto branch = fork_db.fetch_branch( fork_db.head()->id );
          int rev = 0;
@@ -589,19 +593,21 @@ struct controller_impl {
    void startup(std::function<void()> shutdown, std::function<bool()> check_shutdown, const snapshot_reader_ptr& snapshot) {
       EOS_ASSERT( snapshot, snapshot_exception, "No snapshot reader provided" );
       this->shutdown = shutdown;
-      ilog( "Starting initialization from snapshot, this may take a significant amount of time" );
       try {
          snapshot->validate();
          if( auto blog_head = blog.head() ) {
+            ilog( "Starting initialization from snapshot and block log ${b}-${e}, this may take a significant amount of time",
+                  ("b", blog.first_block_num())("e", blog_head->block_num()) );
             read_from_snapshot( snapshot, blog.first_block_num(), blog_head->block_num() );
          } else {
+            ilog( "Starting initialization from snapshot and no block log, this may take a significant amount of time" );
             read_from_snapshot( snapshot, 0, std::numeric_limits<uint32_t>::max() );
-            const uint32_t lib_num = head->block_num;
-            EOS_ASSERT( lib_num > 0, snapshot_exception,
+            EOS_ASSERT( head->block_num > 0, snapshot_exception,
                         "Snapshot indicates controller head at block number 0, but that is not allowed. "
                         "Snapshot is invalid." );
-            blog.reset( chain_id, lib_num + 1 );
+            blog.reset( chain_id, head->block_num + 1 );
          }
+         ilog( "Snapshot loaded, lib: ${lib}", ("lib", head->block_num) );
 
          init(check_shutdown);
          ilog( "Finished initialization from snapshot" );
@@ -1174,7 +1180,7 @@ struct controller_impl {
 
       transaction_checktime_timer trx_timer(timer);
       const packed_transaction trx( std::move( etrx ) );
-      transaction_context trx_context( self, trx, std::move(trx_timer), start );
+      transaction_context trx_context( self, trx, trx.id(), std::move(trx_timer), start );
 
       if (auto dm_logger = get_deep_mind_logger(trx_context.is_transient())) {
          dm_logger->on_onerror(etrx);
@@ -1340,7 +1346,7 @@ struct controller_impl {
       uint32_t cpu_time_to_bill_us = billed_cpu_time_us;
 
       transaction_checktime_timer trx_timer( timer );
-      transaction_context trx_context( self, *trx->packed_trx(), std::move(trx_timer) );
+      transaction_context trx_context( self, *trx->packed_trx(), gtrx.trx_id, std::move(trx_timer) );
       trx_context.leeway =  fc::microseconds(0); // avoid stealing cpu resource
       trx_context.block_deadline = block_deadline;
       trx_context.max_transaction_time_subjective = max_transaction_time;
@@ -1554,7 +1560,7 @@ struct controller_impl {
 
          const signed_transaction& trn = trx->packed_trx()->get_signed_transaction();
          transaction_checktime_timer trx_timer(timer);
-         transaction_context trx_context(self, *trx->packed_trx(), std::move(trx_timer), start, trx->get_trx_type());
+         transaction_context trx_context(self, *trx->packed_trx(), trx->id(), std::move(trx_timer), start, trx->get_trx_type());
          if ((bool)subjective_cpu_leeway && self.is_speculative_block()) {
             trx_context.leeway = *subjective_cpu_leeway;
          }

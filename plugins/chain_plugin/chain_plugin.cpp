@@ -294,7 +294,7 @@ void chain_plugin::set_program_options(options_description& cli, options_descrip
           "In \"head\" mode: database contains state changes up to the head block; transactions received by the node are relayed if valid.\n"
           "In \"irreversible\" mode: database contains state changes up to the last irreversible block; "
           "transactions received via the P2P network are not relayed and transactions cannot be pushed via the chain API.\n"
-          "In \"speculative\" mode: (DEPRECATED: head mode recommended) database contains state changes by transactions in the blockchain "
+          "In \"speculative\" mode: database contains state changes by transactions in the blockchain "
           "up to the head block as well as some transactions not yet included in the blockchain; transactions received by the node are relayed if valid.\n"
           )
          ( "api-accept-transactions", bpo::value<bool>()->default_value(true), "Allow API transactions to be evaluated and relayed if valid.")
@@ -335,9 +335,11 @@ void chain_plugin::set_program_options(options_description& cli, options_descrip
          ("transaction-retry-max-storage-size-gb", bpo::value<uint64_t>(),
           "Maximum size (in GiB) allowed to be allocated for the Transaction Retry feature. Setting above 0 enables this feature.")
          ("transaction-retry-interval-sec", bpo::value<uint32_t>()->default_value(20),
-          "How often, in seconds, to resend an incoming transaction to network if not seen in a block.")
+          "How often, in seconds, to resend an incoming transaction to network if not seen in a block.\n"
+          "Needs to be at least twice as large as p2p-dedup-cache-expire-time-sec.")
          ("transaction-retry-max-expiration-sec", bpo::value<uint32_t>()->default_value(120),
-          "Maximum allowed transaction expiration for retry transactions, will retry transactions up to this value.")
+          "Maximum allowed transaction expiration for retry transactions, will retry transactions up to this value.\n"
+          "Should be larger than transaction-retry-interval-sec.")
          ("transaction-finality-status-max-storage-size-gb", bpo::value<uint64_t>(),
           "Maximum size (in GiB) allowed to be allocated for the Transaction Finality Status feature. Setting above 0 enables this feature.")
          ("transaction-finality-status-success-duration-sec", bpo::value<uint64_t>()->default_value(config::default_max_transaction_finality_status_success_duration_sec),
