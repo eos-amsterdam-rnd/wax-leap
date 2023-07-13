@@ -114,3 +114,6 @@ Merged with Leap 3.1.4
 
 bugfix in version string
 
+## Release `v3.1.5wax01`
+
+Merged with Leap 3.1.5
