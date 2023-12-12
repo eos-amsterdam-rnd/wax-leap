@@ -125,3 +125,8 @@ Merged with Leap 3.2.3
 ## Release `v3.2.4wax01`
 
 Merged with Leap 3.2.4
+
+## Release `v3.2.5wax01`
+
+Merged with Leap 3.2.5
+
