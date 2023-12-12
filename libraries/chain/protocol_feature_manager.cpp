@@ -261,6 +261,53 @@ Enables new `get_block_num` intrinsic which returns the current block number.
 */
             {}
          } )
+         (  builtin_protocol_feature_t::bls_primitives, builtin_protocol_feature_spec{
+            "BLS_PRIMITIVES2",
+            fc::variant("c0cce5bcd8ea19a28d9e12eafda65ebe6d0e0177e280d4f20c7ad66dcd9e011b").as<digest_type>(),
+            // SHA256 hash of the raw message below within the comment delimiters (do not modify message below).
+/*
+Builtin protocol feature: BLS_PRIMITIVES2
+
+Adds new cryptographic host functions
+- Add, weighted sum, map, and pairing functions for the bls12-381 elliptic curve.
+*/
+            {}
+         } )
+         (  builtin_protocol_feature_t::disable_deferred_trxs_stage_1, builtin_protocol_feature_spec{
+            "DISABLE_DEFERRED_TRXS_STAGE_1",
+            fc::variant("440c3efaaab212c387ce967c574dc813851cf8332d041beb418dfaf55facd5a9").as<digest_type>(),
+            // SHA256 hash of the raw message below within the comment delimiters (do not modify message below).
+/*
+Builtin protocol feature: DISABLE_DEFERRED_TRXS_STAGE_1
+
+Once this first disabling deferred transactions protocol feature is activated,
+the behavior of the send_deferred and cancel_deferred host functions and
+canceldelay native action changes so that they become no-ops.
+
+In addition, any block that retires a deferred transaction with a status other
+than expired is invalid.
+
+Also, a deferred transaction can only be retired as expired, and it can be
+retired as expired regardless of whether its delay_util or expiration times
+have been reached.
+*/
+            {}
+         } )
+         (  builtin_protocol_feature_t::disable_deferred_trxs_stage_2, builtin_protocol_feature_spec{
+            "DISABLE_DEFERRED_TRXS_STAGE_2",
+            fc::variant("a857eeb932774c511a40efb30346ec01bfb7796916b54c3c69fe7e5fb70d5cba").as<digest_type>(),
+            // SHA256 hash of the raw message below within the comment delimiters (do not modify message below).
+/*
+Builtin protocol feature: DISABLE_DEFERRED_TRXS_STAGE_2
+Depends on: DISABLE_DEFERRED_TRXS_STAGE_1
+
+On activation of this second disabling deferred transactions protocol feature,
+all pending deferred transactions are removed from state and the RAM paid by
+the sender of each deferred transaction is refunded. Also, any block that
+retires a deferred transaction is invalid.
+*/
+            {builtin_protocol_feature_t::disable_deferred_trxs_stage_1}
+         } )
    ;
 
 
@@ -780,34 +827,34 @@ Enables new `get_block_num` intrinsic which returns the current block number.
       }
    }
 
-   std::optional<builtin_protocol_feature> read_builtin_protocol_feature( const fc::path& p  ) {
+   std::optional<builtin_protocol_feature> read_builtin_protocol_feature( const std::filesystem::path& p  ) {
       try {
          return fc::json::from_file<builtin_protocol_feature>( p );
       } catch( const fc::exception& e ) {
          wlog( "problem encountered while reading '${path}':\n${details}",
-               ("path", p.generic_string())("details",e.to_detail_string()) );
+               ("path", p)("details",e.to_detail_string()) );
       } catch( ... ) {
          dlog( "unknown problem encountered while reading '${path}'",
-               ("path", p.generic_string()) );
+               ("path", p) );
       }
       return {};
    }
 
-   protocol_feature_set initialize_protocol_features( const fc::path& p, bool populate_missing_builtins ) {
-      using boost::filesystem::directory_iterator;
+   protocol_feature_set initialize_protocol_features( const std::filesystem::path& p, bool populate_missing_builtins ) {
+      using std::filesystem::directory_iterator;
 
       protocol_feature_set pfs;
 
       bool directory_exists = true;
 
-      if( fc::exists( p ) ) {
-         EOS_ASSERT( fc::is_directory( p ), plugin_exception,
+      if( std::filesystem::exists( p ) ) {
+         EOS_ASSERT( std::filesystem::is_directory( p ), plugin_exception,
                      "Path to protocol-features is not a directory: ${path}",
-                     ("path", p.generic_string())
+                     ("path", p)
          );
       } else {
          if( populate_missing_builtins )
-            boost::filesystem::create_directories( p );
+            std::filesystem::create_directories( p );
          else
             directory_exists = false;
       }
@@ -849,7 +896,7 @@ Enables new `get_block_num` intrinsic which returns the current block number.
          }
       };
 
-      map<builtin_protocol_feature_t, fc::path>  found_builtin_protocol_features;
+      map<builtin_protocol_feature_t, std::filesystem::path>  found_builtin_protocol_features;
       map<digest_type, std::pair<builtin_protocol_feature, bool> > builtin_protocol_features_to_add;
       // The bool in the pair is set to true if the builtin protocol feature has already been visited to add
       map< builtin_protocol_feature_t, std::optional<digest_type> > visited_builtins;
@@ -858,7 +905,7 @@ Enables new `get_block_num` intrinsic which returns the current block number.
       if( directory_exists ) {
          for( directory_iterator enditr, itr{p}; itr != enditr; ++itr ) {
             auto file_path = itr->path();
-            if( !fc::is_regular_file( file_path ) || file_path.extension().generic_string().compare( ".json" ) != 0 )
+            if( !std::filesystem::is_regular_file( file_path ) || file_path.extension().generic_string().compare( ".json" ) != 0 )
                continue;
 
             auto f = read_builtin_protocol_feature( file_path );
@@ -870,8 +917,8 @@ Enables new `get_block_num` intrinsic which returns the current block number.
             EOS_ASSERT( res.second, plugin_exception,
                         "Builtin protocol feature '${codename}' was already included from a previous_file",
                         ("codename", builtin_protocol_feature_codename(f->get_codename()))
-                              ("current_file", file_path.generic_string())
-                              ("previous_file", res.first->second.generic_string())
+                              ("current_file", file_path)
+                              ("previous_file", res.first->second)
             );
 
             const auto feature_digest = f->digest();
@@ -916,23 +963,23 @@ Enables new `get_block_num` intrinsic which returns the current block number.
 
          auto file_path = p / filename;
 
-         EOS_ASSERT( !fc::exists( file_path ), plugin_exception,
+         EOS_ASSERT( !std::filesystem::exists( file_path ), plugin_exception,
                      "Could not save builtin protocol feature with codename '${codename}' because a file at the following path already exists: ${path}",
                      ("codename", builtin_protocol_feature_codename( f.get_codename() ))
-                           ("path", file_path.generic_string())
+                           ("path", file_path)
          );
 
          if( fc::json::save_to_file( f, file_path ) ) {
             ilog( "Saved default specification for builtin protocol feature '${codename}' (with digest of '${digest}') to: ${path}",
                   ("codename", builtin_protocol_feature_codename(f.get_codename()))
                         ("digest", feature_digest)
-                        ("path", file_path.generic_string())
+                        ("path", file_path)
             );
          } else {
             elog( "Error occurred while writing default specification for builtin protocol feature '${codename}' (with digest of '${digest}') to: ${path}",
                   ("codename", builtin_protocol_feature_codename(f.get_codename()))
                         ("digest", feature_digest)
-                        ("path", file_path.generic_string())
+                        ("path", file_path)
             );
          }
       };

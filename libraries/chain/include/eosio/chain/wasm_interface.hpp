@@ -4,8 +4,6 @@
 #include <eosio/chain/whitelisted_intrinsics.hpp>
 #include <eosio/chain/exceptions.hpp>
 #include <functional>
-#include "Runtime/Linker.h"
-#include "Runtime/Runtime.h"
 
 namespace eosio { namespace chain {
 
@@ -42,11 +40,24 @@ namespace eosio { namespace chain {
              }
          }
 
-         wasm_interface(vm_type vm, bool eosvmoc_tierup, const chainbase::database& d, const boost::filesystem::path data_dir, const eosvmoc::config& eosvmoc_config, bool profile);
+         enum class vm_oc_enable {
+            oc_auto,
+            oc_all,
+            oc_none
+         };
+
+         inline static bool test_disable_tierup = false; // set by unittests to test tierup failing
+
+         wasm_interface(vm_type vm, vm_oc_enable eosvmoc_tierup, const chainbase::database& d, const std::filesystem::path data_dir, const eosvmoc::config& eosvmoc_config, bool profile);
          ~wasm_interface();
 
+#ifdef EOSIO_EOS_VM_OC_RUNTIME_ENABLED
          // initialize exec per thread
          void init_thread_local_data();
+
+         // returns true if EOS VM OC is enabled
+         bool is_eos_vm_oc_enabled() const;
+#endif
 
          //call before dtor to skip what can be minutes of dtor overhead with some runtimes; can cause leaks
          void indicate_shutting_down();
@@ -67,18 +78,28 @@ namespace eosio { namespace chain {
          bool is_code_cached(const digest_type& code_hash, const uint8_t& vm_type, const uint8_t& vm_version) const;
 
          // If substitute_apply is set, then apply calls it before doing anything else. If substitute_apply returns true,
-         // then apply returns immediately.
-         std::function<bool(
-            const digest_type& code_hash, uint8_t vm_type, uint8_t vm_version, apply_context& context)> substitute_apply;
+         // then apply returns immediately. Provided function must be multi-thread safe.
+         std::function<bool(const digest_type& code_hash, uint8_t vm_type, uint8_t vm_version, apply_context& context)> substitute_apply;
+
       private:
+         vm_oc_enable eosvmoc_tierup;
          unique_ptr<struct wasm_interface_impl> my;
-         vm_type vm;
    };
 
 } } // eosio::chain
 
 namespace eosio{ namespace chain {
    std::istream& operator>>(std::istream& in, wasm_interface::vm_type& runtime);
+   inline std::ostream& operator<<(std::ostream& os, wasm_interface::vm_oc_enable t) {
+      if (t == wasm_interface::vm_oc_enable::oc_auto) {
+         os << "auto";
+      } else if (t == wasm_interface::vm_oc_enable::oc_all) {
+         os << "all";
+      } else if (t == wasm_interface::vm_oc_enable::oc_none) {
+         os << "none";
+      }
+      return os;
+   }
 }}
 
 FC_REFLECT_ENUM( eosio::chain::wasm_interface::vm_type, (eos_vm)(eos_vm_jit)(eos_vm_oc) )

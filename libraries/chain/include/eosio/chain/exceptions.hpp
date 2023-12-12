@@ -87,6 +87,26 @@
       NEXT(e.dynamic_copy_exception());\
    }
 
+/**
+ * Capture all exceptions and return return_type which is constructible from a fc::exception_ptr
+ */
+#define CATCH_AND_RETURN(return_type)\
+   catch ( const fc::exception& err ) {\
+      return return_type(err.dynamic_copy_exception());\
+   } catch ( const std::exception& e ) {\
+      fc::exception fce( \
+         FC_LOG_MESSAGE( warn, "rethrow ${what}: ", ("what",e.what())),\
+         fc::std_exception_code,\
+         BOOST_CORE_TYPEID(e).name(),\
+         e.what() ) ;\
+      return return_type(fce.dynamic_copy_exception());\
+   } catch( ... ) {\
+      fc::unhandled_exception e(\
+         FC_LOG_MESSAGE(warn, "rethrow"),\
+         std::current_exception());\
+      return return_type(e.dynamic_copy_exception());\
+   }
+
 #define EOS_RECODE_EXC( cause_type, effect_type ) \
    catch( const cause_type& e ) \
    { throw( effect_type( e.what(), e.get_log() ) ); }
@@ -303,8 +323,7 @@ namespace eosio { namespace chain {
                                     3050010, "Action attempts to increase RAM usage of account without authorization" )
       FC_DECLARE_DERIVED_EXCEPTION( restricted_error_code_exception, action_validate_exception,
                                     3050011, "eosio_assert_code assertion failure uses restricted error code value" )
-      FC_DECLARE_DERIVED_EXCEPTION( inline_action_too_big_nonprivileged, action_validate_exception,
-                                    3050012, "Inline action exceeds maximum size limit for a non-privileged account" )
+      // Removed 3050012 - inline_action_too_big_nonprivileged, no longer needed
       FC_DECLARE_DERIVED_EXCEPTION( action_return_value_exception, action_validate_exception,
                                     3050014, "action return value size too big" )
 
@@ -583,6 +602,8 @@ namespace eosio { namespace chain {
                                     3170014, "Snapshot request not found" )
       FC_DECLARE_DERIVED_EXCEPTION( invalid_snapshot_request,  producer_exception,
                                     3170015, "Invalid snapshot request" )
+      FC_DECLARE_DERIVED_EXCEPTION( snapshot_execution_exception,  producer_exception,
+                                    3170016, "Snapshot execution exception" )
 
    FC_DECLARE_DERIVED_EXCEPTION( reversible_blocks_exception,           chain_exception,
                                  3180000, "Reversible Blocks exception" )

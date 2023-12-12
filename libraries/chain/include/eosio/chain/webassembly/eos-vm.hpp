@@ -41,6 +41,7 @@ struct profile_config {
 
 template<typename Backend>
 class eos_vm_runtime : public eosio::chain::wasm_runtime_interface {
+   using context_t = typename Backend::template context<eos_vm_host_functions_t>;
    public:
       eos_vm_runtime();
       std::unique_ptr<wasm_instantiated_module_interface> instantiate_module(const char* code_bytes, size_t code_size,
@@ -48,7 +49,11 @@ class eos_vm_runtime : public eosio::chain::wasm_runtime_interface {
 
    private:
       // todo: managing this will get more complicated with sync calls;
-      eos_vm_backend_t<Backend>* _bkend = nullptr;  // non owning pointer to allow for immediate exit
+      // Each thread uses its own backend and exec context.
+      // Their constructors do not take any arguments; therefore their life time
+      // do not rely on others. Safe to be thread_local.
+      thread_local static eos_vm_backend_t<Backend> _bkend;
+      thread_local static context_t                 _exec_ctx;
 
    template<typename Impl>
    friend class eos_vm_instantiated_module;

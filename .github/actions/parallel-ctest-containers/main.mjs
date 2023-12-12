@@ -10,6 +10,7 @@ const container = core.getInput('container', {required: true});
 const error_log_paths = JSON.parse(core.getInput('error-log-paths', {required: true}));
 const log_tarball_prefix = core.getInput('log-tarball-prefix', {required: true});
 const tests_label = core.getInput('tests-label', {required: true});
+const test_timeout = core.getInput('test-timeout', {required: true});
 
 const repo_name = process.env.GITHUB_REPOSITORY.split('/')[1];
 
@@ -21,16 +22,15 @@ try {
    if(child_process.spawnSync("docker", ["rm", "base"], {stdio:"inherit"}).status)
       throw new Error("Failed to remove base container");
 
-   // the correct approach is by far "--show-only=json-v1" and then pluck out .tests[].name; but that doesn't work on U18's cmake 3.10 since it lacks json-v1 output
-   const test_query_result = child_process.spawnSync("docker", ["run", "--rm", "baseimage", "bash", "-e", "-o", "pipefail", "-c", `cd build; ctest -L '${tests_label}' --show-only | head -n -1 | cut -d ':' -f 2 -s | jq -cnR '[inputs | select(length>0)[1:]]'`]);
+   const test_query_result = child_process.spawnSync("docker", ["run", "--rm", "baseimage", "bash", "-e", "-o", "pipefail", "-c", `cd build; ctest -L '${tests_label}' --show-only=json-v1`]);
    if(test_query_result.status)
       throw new Error("Failed to discover tests with label")
-   const tests = JSON.parse(test_query_result.stdout);
+   const tests = JSON.parse(test_query_result.stdout).tests;
 
    let subprocesses = [];
    tests.forEach(t => {
       subprocesses.push(new Promise(resolve => {
-         child_process.spawn("docker", ["run", "--security-opt", "seccomp=unconfined", "-e", "GITHUB_ACTIONS=True", "--name", t, "--init", "baseimage", "bash", "-c", `cd build; ctest --output-on-failure -R '^${t}$'`], {stdio:"inherit"}).on('close', code => resolve(code));
+         child_process.spawn("docker", ["run", "--security-opt", "seccomp=unconfined", "-e", "GITHUB_ACTIONS=True", "--name", t.name, "--init", "baseimage", "bash", "-c", `cd build; ctest --output-on-failure -R '^${t.name}$' --timeout ${test_timeout}`], {stdio:"inherit"}).on('close', code => resolve(code));
       }));
    });
 
@@ -63,8 +63,8 @@ try {
          stream.pipe(packer.entry(header, next));
       }).on('finish', () => {packer.finalize()});
 
-      child_process.spawn("docker", ["export", tests[i]]).stdout.pipe(extractor);
-      stream.promises.pipeline(packer, zlib.createGzip(), fs.createWriteStream(`${log_tarball_prefix}-${tests[i]}-logs.tar.gz`));
+      child_process.spawn("docker", ["export", tests[i].name]).stdout.pipe(extractor);
+      stream.promises.pipeline(packer, zlib.createGzip(), fs.createWriteStream(`${log_tarball_prefix}-${tests[i].name}-logs.tar.gz`));
    }
 } catch(e) {
    core.setFailed(`Uncaught exception ${e.message}`);

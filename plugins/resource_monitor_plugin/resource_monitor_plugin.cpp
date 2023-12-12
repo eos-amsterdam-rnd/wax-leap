@@ -1,13 +1,13 @@
 /**
-   It was reported from a customer that when file system which 
-   "data/blocks" belongs to is running out of space, the producer  
+   It was reported from a customer that when file system which
+   "data/blocks" belongs to is running out of space, the producer
    continued to produce blocks and update state but the blocks log was
    "corrupted" in that it no longer contained all the irreversible blocks.
    It was also observed that when file system which "data/state"
    belons to is running out of space, nodeos will crash with SIGBUS as
    the state file is unable to acquire new pages.
 
-   The solution is to have a dedicated plugin to monitor resource 
+   The solution is to have a dedicated plugin to monitor resource
    usages (file system space now, CPU, memory, and networking
    bandwidth in the future).
    The plugin uses a thread to periodically check space usage of file
@@ -24,15 +24,12 @@
 #include <fc/exception/exception.hpp>
 #include <fc/log/logger_config.hpp> // set_os_thread_name
 
-#include <boost/filesystem.hpp>
-
 #include <thread>
 
 #include <sys/stat.h>
 
 using namespace eosio::resource_monitor;
 
-namespace bfs = boost::filesystem;
 
 namespace eosio {
    static auto _resource_monitor_plugin = application::register_plugin<resource_monitor_plugin>();
@@ -62,7 +59,7 @@ public:
            "Number of resource monitor intervals between two consecutive warnings when the threshold is hit. Should be between 1 and 450" )
          ;
    }
-   
+
    void plugin_initialize(const appbase::variables_map& options) {
       dlog("plugin_initialize");
       try{
@@ -109,12 +106,12 @@ public:
          throw;
       }
    }
-   
+
    // Start main thread
    void plugin_startup() {
       space_handler.start(directories_registered);
    }
-   
+
    // System is shutting down.
    void plugin_shutdown() {
       ilog("entered shutdown...");
@@ -122,15 +119,15 @@ public:
       ilog("exiting shutdown");
    }
 
-   void monitor_directory(const bfs::path& path) {
+   void monitor_directory(const std::filesystem::path& path) {
       dlog("${path} registered to be monitored", ("path", path.string()));
       directories_registered.push_back(path);
    }
 
 private:
    std::thread               monitor_thread;
-   std::vector<bfs::path>    directories_registered;
-   
+   std::vector<std::filesystem::path>    directories_registered;
+
    static constexpr uint32_t def_interval_in_secs = 2;
    static constexpr uint32_t monitor_interval_min = 1;
    static constexpr uint32_t monitor_interval_max = 300;
@@ -168,7 +165,7 @@ void resource_monitor_plugin::plugin_shutdown() {
    my->plugin_shutdown();
 }
 
-void resource_monitor_plugin::monitor_directory(const bfs::path& path) {
+void resource_monitor_plugin::monitor_directory(const std::filesystem::path& path) {
    my->monitor_directory( path );
 }
 

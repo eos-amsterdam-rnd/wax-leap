@@ -5,26 +5,22 @@
 *.bc
 *.wast
 *.wast.hpp
-*.s
 *.dot
 *.abi.hpp
-*.cmake
-!.cicd
-!package.cmake
-!CMakeModules/*.cmake
 *.ninja
 \#*
 \.#*
 CMakeCache.txt
 CMakeFiles
-cmake_install.cmake
-cmake-build-debug/
-cmake-build-release/
+cmake-build-*/
 Makefile
 compile_commands.json
 moc_*
 *.moc
 
+.cache
+
+genesis.json
 hardfork.hpp
 
 libraries/utilities/git_revision.cpp
@@ -74,6 +70,8 @@ witness_node_data_dir
 *.pyc
 *.pyo
 
+*.gdb_history
+
 Testing/*
 build.tar.gz
 [Bb]uild*/*
@@ -92,3 +90,5 @@ CMakeLists.txt.user
 
 node_modules
 package-lock.json
+
+snapshots

@@ -1,13 +1,10 @@
 #pragma once
 
-#include <boost/filesystem.hpp>
 #include <boost/asio.hpp>
 
 #include <eosio/chain/application.hpp>
 #include <eosio/chain/exceptions.hpp>
 #include <eosio/chain/thread_utils.hpp>
-
-namespace bfs = boost::filesystem;
 
 namespace eosio::resource_monitor {
    template<typename SpaceProvider>
@@ -18,15 +15,15 @@ namespace eosio::resource_monitor {
       {
       }
 
-      void start(const std::vector<bfs::path>& directories) {
+      void start(const std::vector<std::filesystem::path>& directories) {
          for ( auto& dir: directories ) {
             add_file_system( dir );
 
             // A directory like "data" contains subdirectories like
             // "block". Those subdirectories can mount on different
             // file systems. Make sure they are taken care of.
-            for (bfs::directory_iterator itr(dir); itr != bfs::directory_iterator(); ++itr) {
-               if (bfs::is_directory(itr->path())) {
+            for (std::filesystem::directory_iterator itr(dir); itr != std::filesystem::directory_iterator(); ++itr) {
+               if (std::filesystem::is_directory(itr->path())) {
                   add_file_system( itr->path() );
                }
             }
@@ -81,7 +78,7 @@ namespace eosio::resource_monitor {
       bool is_threshold_exceeded() {
          // Go over each monitored file system
          for (auto& fs: filesystems) {
-            boost::system::error_code ec;
+            std::error_code ec;
             auto info = space_provider.get_space(fs.path_name, ec);
             if ( ec ) {
                // As the system is running and this plugin is not a critical
@@ -116,7 +113,7 @@ namespace eosio::resource_monitor {
          return false;
       }
 
-      void add_file_system(const bfs::path& path_name) {
+      void add_file_system(const std::filesystem::path& path_name) {
          // Get detailed information of the path
          struct stat statbuf{};
          auto status = space_provider.get_stat(path_name.string().c_str(), &statbuf);
@@ -136,9 +133,9 @@ namespace eosio::resource_monitor {
          }
 
          // For efficiency, precalculate threshold values to avoid calculating it
-         // everytime we check space usage. Since bfs::space returns
+         // everytime we check space usage. Since std::filesystem::space returns
          // available amount, we use minimum available amount as threshold.
-         boost::system::error_code ec;
+         std::error_code ec;
          auto info = space_provider.get_space(path_name, ec);
          EOS_ASSERT(!ec, chain::plugin_config_exception,
             "Unable to get space info for ${path_name}: [code: ${ec}] ${message}",
@@ -169,24 +166,22 @@ namespace eosio::resource_monitor {
       }
       update_warning_interval_counter();
 
-      {
-         timer.expires_from_now( boost::posix_time::seconds( sleep_time_in_secs ));
-         timer.async_wait([this](auto& ec) {
-            if ( ec ) {
-               // No need to check if ec is operation_aborted (cancelled),
-               // as cancel callback will never be make it here after thread_pool
-               // is stopped, even though cancel is called in the timer's
-               // destructor.
-               wlog("Exit due to error: ${ec}, message: ${message}",
-                    ("ec", ec.value())
-                    ("message", ec.message()));
-               return;
-            } else {
-               // Loop over
-               space_monitor_loop();
-            }
-         });
-      }
+      timer.expires_from_now( boost::posix_time::seconds( sleep_time_in_secs ));
+      timer.async_wait([this](const auto& ec) {
+         if ( ec ) {
+            // No need to check if ec is operation_aborted (cancelled),
+            // as cancel callback will never be make it here after thread_pool
+            // is stopped, even though cancel is called in the timer's
+            // destructor.
+            wlog("Exit due to error: ${ec}, message: ${message}",
+                 ("ec", ec.value())
+                 ("message", ec.message()));
+            return;
+         } else {
+            // Loop over
+            space_monitor_loop();
+         }
+      });
    }
 
    private:
@@ -207,10 +202,10 @@ namespace eosio::resource_monitor {
       struct   filesystem_info {
          dev_t      st_dev; // device id of file system containing "file_path"
          uintmax_t  shutdown_available {0}; // minimum number of available bytes the file system must maintain
-         bfs::path  path_name;
+         std::filesystem::path  path_name;
          uintmax_t  warning_available {0};  // warning is issued when available number of bytes drops below warning_available
 
-         filesystem_info(dev_t dev, uintmax_t available, const bfs::path& path, uintmax_t warning)
+         filesystem_info(dev_t dev, uintmax_t available, const std::filesystem::path& path, uintmax_t warning)
          : st_dev(dev),
          shutdown_available(available),
          path_name(path),

@@ -31,3 +31,12 @@
 [submodule "libraries/cli11/cli11"]
 	path = libraries/cli11/cli11
 	url = https://github.com/AntelopeIO/CLI11.git
+[submodule "libraries/libfc/libraries/bls12-381"]
+	path = libraries/libfc/libraries/bls12-381
+	url = https://github.com/AntelopeIO/bls12-381
+[submodule "libraries/boost"]
+	path = libraries/boost
+	url = https://github.com/boostorg/boost.git
+[submodule "libraries/libfc/libraries/boringssl/boringssl"]
+	path = libraries/libfc/libraries/boringssl/boringssl
+	url = https://github.com/AntelopeIO/boringssl-build

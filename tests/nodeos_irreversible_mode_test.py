@@ -24,20 +24,15 @@ numOfProducers = 4
 totalNodes = 20
 
 # Parse command line arguments
-args = TestHelper.parse_args({"-v","--clean-run","--dump-error-details","--leave-running","--keep-logs","--unshared"})
+args = TestHelper.parse_args({"-v","--dump-error-details","--leave-running","--keep-logs","--unshared"})
 Utils.Debug = args.v
-killAll=args.clean_run
 dumpErrorDetails=args.dump_error_details
-dontKill=args.leave_running
-killEosInstances=not dontKill
-killWallet=not dontKill
-keepLogs=args.keep_logs
 speculativeReadMode="head"
 blockLogRetainBlocks="10000"
 
 # Setup cluster and it's wallet manager
 walletMgr=WalletMgr(True)
-cluster=Cluster(walletd=True,unshared=args.unshared)
+cluster=Cluster(unshared=args.unshared, keepRunning=args.leave_running, keepLogs=args.keep_logs)
 cluster.setWalletMgr(walletMgr)
 
 def backupBlksDir(nodeId):
@@ -153,7 +148,7 @@ def confirmHeadLibAndForkDbHeadOfSpecMode(nodeToTest, headLibAndForkDbHeadBefore
          "Fork db head ({}) should be equal to fork db head before switch mode ({}) ".format(forkDbHead, forkDbHeadBeforeSwitchMode)
 
 def relaunchNode(node: Node, chainArg="", addSwapFlags=None, relaunchAssertMessage="Fail to relaunch"):
-   isRelaunchSuccess = node.relaunch(chainArg=chainArg, addSwapFlags=addSwapFlags, timeout=relaunchTimeout, cachePopen=True)
+   isRelaunchSuccess = node.relaunch(chainArg=chainArg, addSwapFlags=addSwapFlags, timeout=relaunchTimeout)
    time.sleep(1) # Give a second to replay or resync if needed
    assert isRelaunchSuccess, relaunchAssertMessage
    return isRelaunchSuccess
@@ -164,8 +159,6 @@ testSuccessful = False
 try:
    # Kill any existing instances and launch cluster
    TestHelper.printSystemInfo("BEGIN")
-   cluster.killall(allInstances=killAll)
-   cluster.cleanup()
    cluster.launch(
       prodCount=numOfProducers,
       totalProducers=numOfProducers,
@@ -480,7 +473,7 @@ try:
    testSuccessful = testSuccessful and executeTest(19, switchToNoBlockLogWithIrrModeSnapshot)
 
 finally:
-   TestHelper.shutdown(cluster, walletMgr, testSuccessful, killEosInstances, killWallet, keepLogs, killAll, dumpErrorDetails)
+   TestHelper.shutdown(cluster, walletMgr, testSuccessful, dumpErrorDetails)
    # Print test result
    for msg in testResultMsgs:
       Print(msg)

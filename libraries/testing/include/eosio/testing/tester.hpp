@@ -64,8 +64,11 @@ namespace eosio { namespace testing {
       preactivate_feature_only,
       preactivate_feature_and_new_bios,
       old_wasm_parser,
+      full_except_do_not_disable_deferred_trx,
       full
    };
+
+   std::ostream& operator<<(std::ostream& os, setup_policy p);
 
    std::vector<uint8_t> read_wasm( const char* fn );
    std::vector<char>    read_abi( const char* fn );
@@ -154,7 +157,7 @@ namespace eosio { namespace testing {
 
          virtual ~base_tester() {};
 
-         void              init(const setup_policy policy = setup_policy::full, db_read_mode read_mode = db_read_mode::HEAD, std::optional<uint32_t> genesis_max_inline_action_size = std::optional<uint32_t>{}, std::optional<uint32_t> config_max_nonprivileged_inline_action_size = std::optional<uint32_t>{});
+         void              init(const setup_policy policy = setup_policy::full, db_read_mode read_mode = db_read_mode::HEAD, std::optional<uint32_t> genesis_max_inline_action_size = std::optional<uint32_t>{});
          void              init(controller::config config, const snapshot_reader_ptr& snapshot);
          void              init(controller::config config, const genesis_state& genesis);
          void              init(controller::config config);
@@ -280,12 +283,12 @@ namespace eosio { namespace testing {
 
          template<typename ObjectType, typename IndexBy, typename... Args>
          const auto& get( Args&&... args ) {
-            return control->db().get<ObjectType,IndexBy>( forward<Args>(args)... );
+            return control->db().get<ObjectType,IndexBy>( std::forward<Args>(args)... );
          }
 
          template<typename ObjectType, typename IndexBy, typename... Args>
          const auto* find( Args&&... args ) {
-            return control->db().find<ObjectType,IndexBy>( forward<Args>(args)... );
+            return control->db().find<ObjectType,IndexBy>( std::forward<Args>(args)... );
          }
 
          template< typename KeyType = fc::ecc::private_key_shim >
@@ -305,7 +308,7 @@ namespace eosio { namespace testing {
 
          void              set_code( account_name name, const char* wast, const private_key_type* signer = nullptr );
          void              set_code( account_name name, const vector<uint8_t> wasm, const private_key_type* signer = nullptr  );
-         void              set_abi( account_name name, const char* abi_json, const private_key_type* signer = nullptr );
+         void              set_abi( account_name name, const std::string& abi_json, const private_key_type* signer = nullptr );
 
          bool is_code_cached( account_name name ) const;
 
@@ -384,6 +387,7 @@ namespace eosio { namespace testing {
          void preactivate_protocol_features(const vector<digest_type> feature_digests);
          void preactivate_builtin_protocol_features(const std::vector<builtin_protocol_feature_t>& features);
          void preactivate_all_builtin_protocol_features();
+         void preactivate_all_but_disable_deferred_trx();
 
          static genesis_state default_genesis() {
             genesis_state genesis;
@@ -393,7 +397,7 @@ namespace eosio { namespace testing {
             return genesis;
          }
 
-         static std::pair<controller::config, genesis_state> default_config(const fc::temp_directory& tempdir, std::optional<uint32_t> genesis_max_inline_action_size = std::optional<uint32_t>{}, std::optional<uint32_t> config_max_nonprivileged_inline_action_size = std::optional<uint32_t>{}) {
+         static std::pair<controller::config, genesis_state> default_config(const fc::temp_directory& tempdir, std::optional<uint32_t> genesis_max_inline_action_size = std::optional<uint32_t>{}) {
             controller::config cfg;
             cfg.blocks_dir      = tempdir.path() / config::default_blocks_dir_name;
             cfg.state_dir  = tempdir.path() / config::default_state_dir_name;
@@ -401,6 +405,16 @@ namespace eosio { namespace testing {
             cfg.state_guard_size = 0;
             cfg.contracts_console = true;
             cfg.eosvmoc_config.cache_size = 1024*1024*8;
+
+            // don't enforce OC compilation subject limits for tests,
+            // particularly EOS EVM tests may run over those limits
+            cfg.eosvmoc_config.cpu_limit.reset();
+            cfg.eosvmoc_config.vm_limit.reset();
+            cfg.eosvmoc_config.stack_size_limit.reset();
+            cfg.eosvmoc_config.generated_code_size_limit.reset();
+
+            // don't use auto tier up for tests, since the point is to test diff vms
+            cfg.eosvmoc_tierup = chain::wasm_interface::vm_oc_enable::oc_none;
 
             for(int i = 0; i < boost::unit_test::framework::master_test_suite().argc; ++i) {
                if(boost::unit_test::framework::master_test_suite().argv[i] == std::string("--eos-vm"))
@@ -413,9 +427,6 @@ namespace eosio { namespace testing {
             auto gen = default_genesis();
             if (genesis_max_inline_action_size) {
                gen.initial_configuration.max_inline_action_size = *genesis_max_inline_action_size;
-            }
-            if (config_max_nonprivileged_inline_action_size) {
-               cfg.max_nonprivileged_inline_action_size = *config_max_nonprivileged_inline_action_size;
             }
             return {cfg, gen};
          }
@@ -443,12 +454,15 @@ namespace eosio { namespace testing {
 
       public:
          vector<digest_type>                           protocol_features_to_be_activated_wo_preactivation;
+
+      private:
+         std::vector<builtin_protocol_feature_t> get_all_builtin_protocol_features();
    };
 
    class tester : public base_tester {
    public:
-      tester(setup_policy policy = setup_policy::full, db_read_mode read_mode = db_read_mode::HEAD, std::optional<uint32_t> genesis_max_inline_action_size = std::optional<uint32_t>{}, std::optional<uint32_t> config_max_nonprivileged_inline_action_size = std::optional<uint32_t>{}) {
-         init(policy, read_mode, genesis_max_inline_action_size, config_max_nonprivileged_inline_action_size);
+      tester(setup_policy policy = setup_policy::full, db_read_mode read_mode = db_read_mode::HEAD, std::optional<uint32_t> genesis_max_inline_action_size = std::optional<uint32_t>{}) {
+         init(policy, read_mode, genesis_max_inline_action_size);
       }
 
       tester(controller::config config, const genesis_state& genesis) {
@@ -510,6 +524,12 @@ namespace eosio { namespace testing {
       bool validate() { return true; }
    };
 
+   class tester_no_disable_deferred_trx : public tester {
+   public:
+      tester_no_disable_deferred_trx(): tester(setup_policy::full_except_do_not_disable_deferred_trx) {
+      }
+   };
+
    class validating_tester : public base_tester {
    public:
       virtual ~validating_tester() {
@@ -528,7 +548,7 @@ namespace eosio { namespace testing {
       }
       controller::config vcfg;
 
-      validating_tester(const flat_set<account_name>& trusted_producers = flat_set<account_name>(), deep_mind_handler* dmlog = nullptr) {
+      validating_tester(const flat_set<account_name>& trusted_producers = flat_set<account_name>(), deep_mind_handler* dmlog = nullptr, setup_policy p = setup_policy::full) {
          auto def_conf = default_config(tempdir);
 
          vcfg = def_conf.first;
@@ -538,7 +558,7 @@ namespace eosio { namespace testing {
          validating_node = create_validating_node(vcfg, def_conf.second, true, dmlog);
 
          init(def_conf.first, def_conf.second);
-         execute_setup_policy(setup_policy::full);
+         execute_setup_policy(p);
       }
 
       static void config_validator(controller::config& vcfg) {
@@ -653,6 +673,12 @@ namespace eosio { namespace testing {
       unique_ptr<controller>   validating_node;
       uint32_t                 num_blocks_to_producer_before_shutdown = 0;
       bool                     skip_validate = false;
+   };
+
+   class validating_tester_no_disable_deferred_trx : public validating_tester {
+   public:
+      validating_tester_no_disable_deferred_trx(): validating_tester({}, nullptr, setup_policy::full_except_do_not_disable_deferred_trx) {
+      }
    };
 
    /**

@@ -1,4 +1,5 @@
 #include <eosio/chain/apply_context.hpp>
+#include <eosio/chain/account_object.hpp>
 #include <eosio/chain/transaction_context.hpp>
 #include <eosio/chain/authorization_manager.hpp>
 #include <eosio/chain/exceptions.hpp>
@@ -7,16 +8,6 @@
 #include <eosio/chain/transaction_object.hpp>
 #include <eosio/chain/global_property_object.hpp>
 #include <eosio/chain/deep_mind.hpp>
-
-#pragma push_macro("N")
-#undef N
-#include <boost/accumulators/accumulators.hpp>
-#include <boost/accumulators/statistics/stats.hpp>
-#include <boost/accumulators/statistics/min.hpp>
-#include <boost/accumulators/statistics/max.hpp>
-#include <boost/accumulators/statistics/weighted_mean.hpp>
-#include <boost/accumulators/statistics/weighted_variance.hpp>
-#pragma pop_macro("N")
 
 #include <chrono>
 
@@ -256,8 +247,11 @@ namespace eosio { namespace chain {
                                                  uint64_t packed_trx_prunable_size )
    {
       const transaction& trx = packed_trx.get_transaction();
-      if ( is_transient() ) {
-         EOS_ASSERT( trx.delay_sec.value == 0, transaction_exception, "dry-run or read-only transaction cannot be delayed" );
+      // delayed transactions are not allowed after protocol feature
+      // DISABLE_DEFERRED_TRXS_STAGE_1 is activated;
+      // read-only and dry-run transactions are not allowed to be delayed at any time
+      if( control.is_builtin_activated(builtin_protocol_feature_t::disable_deferred_trxs_stage_1) || is_transient() ) {
+         EOS_ASSERT( trx.delay_sec.value == 0, transaction_exception, "transaction cannot be delayed" );
       }
       if( trx.transaction_extensions.size() > 0 ) {
          disallow_transaction_extensions( "no transaction extensions supported yet for input transactions" );
@@ -276,7 +270,6 @@ namespace eosio { namespace chain {
 
       uint64_t initial_net_usage = static_cast<uint64_t>(cfg.base_per_transaction_net_usage)
                                     + packed_trx_unprunable_size + discounted_size_for_pruned_data;
-
 
       if( trx.delay_sec.value > 0 ) {
           // If delayed, also charge ahead of time for the additional net usage needed to retire the delayed transaction
@@ -471,7 +464,7 @@ namespace eosio { namespace chain {
                      "not enough time left in block to complete executing transaction ${billing_timer}us",
                      ("now", now)("deadline", _deadline)("start", start)("billing_timer", now - pseudo_start) );
       } else if( deadline_exception_code == tx_cpu_usage_exceeded::code_value ) {
-         std::string assert_msg = "transaction was executing for too long ${billing_timer}us";
+         std::string assert_msg = "transaction ${id} was executing for too long ${billing_timer}us";
          if (subjective_cpu_bill_us > 0) {
             assert_msg += " with a subjective cpu of (${subjective} us)";
          }
@@ -479,10 +472,10 @@ namespace eosio { namespace chain {
          assert_msg += get_tx_cpu_usage_exceeded_reason_msg(limit);
          if (cpu_limit_due_to_greylist) {
             assert_msg = "greylisted " + assert_msg;
-            EOS_THROW( greylist_cpu_usage_exceeded, assert_msg,
+            EOS_THROW( greylist_cpu_usage_exceeded, assert_msg, ("id", packed_trx.id())
                      ("billing_timer", now - pseudo_start)("subjective", subjective_cpu_bill_us)("limit", limit) );
          } else {
-            EOS_THROW( tx_cpu_usage_exceeded, assert_msg,
+            EOS_THROW( tx_cpu_usage_exceeded, assert_msg, ("id", packed_trx.id())
                      ("billing_timer", now - pseudo_start)("subjective", subjective_cpu_bill_us)("limit", limit) );
          }
       } else if( deadline_exception_code == leeway_deadline_exception::code_value ) {
@@ -740,7 +733,6 @@ namespace eosio { namespace chain {
       acontext.exec();
    }
 
-
    void transaction_context::schedule_transaction() {
       // Charge ahead of time for the additional net usage needed to retire the delayed transaction
       // whether that be by successfully executing, soft failure, hard failure, or expiration.
@@ -828,7 +820,7 @@ namespace eosio { namespace chain {
                actors.insert( auth.actor );
          }
       }
-      EOS_ASSERT( one_auth || is_transient(), tx_no_auths, "transaction must have at least one authorization" );
+      EOS_ASSERT( one_auth || is_read_only(), tx_no_auths, "transaction must have at least one authorization" );
 
       if( enforce_actor_whitelist_blacklist ) {
          control.check_actor_list( actors );

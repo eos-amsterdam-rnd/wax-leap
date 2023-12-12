@@ -32,19 +32,19 @@ BOOST_AUTO_TEST_CASE(wallet_test)
 
    auto priv = fc::crypto::private_key::generate();
    auto pub = priv.get_public_key();
-   auto wif = priv.to_string();
+   auto wif = priv.to_string({});
    wallet.import_key(wif);
    BOOST_CHECK_EQUAL(1u, wallet.list_keys().size());
 
    auto privCopy = wallet.get_private_key(pub);
-   BOOST_CHECK_EQUAL(wif, privCopy.to_string());
+   BOOST_CHECK_EQUAL(wif, privCopy.to_string({}));
 
    wallet.lock();
    BOOST_CHECK(wallet.is_locked());
    wallet.unlock("pass");
    BOOST_CHECK_EQUAL(1u, wallet.list_keys().size());
    wallet.save_wallet_file("wallet_test.json");
-   BOOST_CHECK(fc::exists("wallet_test.json"));
+   BOOST_CHECK(std::filesystem::exists("wallet_test.json"));
 
    wallet_data d2;
    soft_wallet wallet2(d2);
@@ -57,9 +57,9 @@ BOOST_AUTO_TEST_CASE(wallet_test)
    BOOST_CHECK_EQUAL(1u, wallet2.list_keys().size());
 
    auto privCopy2 = wallet2.get_private_key(pub);
-   BOOST_CHECK_EQUAL(wif, privCopy2.to_string());
+   BOOST_CHECK_EQUAL(wif, privCopy2.to_string({}));
 
-   fc::remove("wallet_test.json");
+   std::filesystem::remove("wallet_test.json");
 } FC_LOG_AND_RETHROW() }
 
 /// Test wallet manager
@@ -67,9 +67,9 @@ BOOST_AUTO_TEST_CASE(wallet_manager_test)
 { try {
    using namespace eosio::wallet;
 
-   if (fc::exists("test.wallet")) fc::remove("test.wallet");
-   if (fc::exists("test2.wallet")) fc::remove("test2.wallet");
-   if (fc::exists("testgen.wallet")) fc::remove("testgen.wallet");
+   if (std::filesystem::exists("test.wallet")) std::filesystem::remove("test.wallet");
+   if (std::filesystem::exists("test2.wallet")) std::filesystem::remove("test2.wallet");
+   if (std::filesystem::exists("testgen.wallet")) std::filesystem::remove("testgen.wallet");
 
    constexpr auto key1 = "5JktVNHnRX48BUdtewU7N1CyL4Z886c42x7wYW7XhNWkDQRhdcS";
    constexpr auto key2 = "5Ju5RTcVDo35ndtzHioPMgebvBM6LkJ6tvuU6LTNQv8yaz3ggZr";
@@ -115,7 +115,7 @@ BOOST_AUTO_TEST_CASE(wallet_manager_test)
    // key3 was not automatically imported
    BOOST_CHECK(std::find(keys.cbegin(), keys.cend(), pub_pri_pair(key3)) == keys.cend());
 
-   wm.remove_key("test", pw, pub_pri_pair(key2).first.to_string());
+   wm.remove_key("test", pw, pub_pri_pair(key2).first.to_string({}));
    BOOST_CHECK_EQUAL(1u, wm.get_public_keys().size());
    keys = wm.list_keys("test", pw);
    BOOST_CHECK(std::find(keys.cbegin(), keys.cend(), pub_pri_pair(key2)) == keys.cend());
@@ -123,9 +123,9 @@ BOOST_AUTO_TEST_CASE(wallet_manager_test)
    BOOST_CHECK_EQUAL(2u, wm.get_public_keys().size());
    keys = wm.list_keys("test", pw);
    BOOST_CHECK(std::find(keys.cbegin(), keys.cend(), pub_pri_pair(key2)) != keys.cend());
-   BOOST_CHECK_THROW(wm.remove_key("test", pw, pub_pri_pair(key3).first.to_string()), fc::exception);
+   BOOST_CHECK_THROW(wm.remove_key("test", pw, pub_pri_pair(key3).first.to_string({})), fc::exception);
    BOOST_CHECK_EQUAL(2u, wm.get_public_keys().size());
-   BOOST_CHECK_THROW(wm.remove_key("test", "PWnogood", pub_pri_pair(key2).first.to_string()), wallet_invalid_password_exception);
+   BOOST_CHECK_THROW(wm.remove_key("test", "PWnogood", pub_pri_pair(key2).first.to_string({})), wallet_invalid_password_exception);
    BOOST_CHECK_EQUAL(2u, wm.get_public_keys().size());
 
    wm.lock("test");
@@ -185,7 +185,7 @@ BOOST_AUTO_TEST_CASE(wallet_manager_test)
    wm.create("testgen");
    BOOST_CHECK_THROW(wm.create_key("testgen", "xxx"), chain::wallet_exception);
    wm.lock("testgen");
-   fc::remove("testgen.wallet");
+   std::filesystem::remove("testgen.wallet");
 
    const string test_key_create_types[] = {"K1", "R1", "k1", ""};
    for(const string& key_type_to_create : test_key_create_types) {
@@ -198,17 +198,17 @@ BOOST_AUTO_TEST_CASE(wallet_manager_test)
       //now pluck out the private key from the wallet and see if the public key of said
       // private key matches what was returned earlier from the create_key() call
       private_key_type create_key_priv(wm.list_keys("testgen", pw).cbegin()->second);
-      BOOST_CHECK_EQUAL(create_key_pub.to_string(), create_key_priv.get_public_key().to_string());
+      BOOST_CHECK_EQUAL(create_key_pub.to_string({}), create_key_priv.get_public_key().to_string({}));
 
       wm.lock("testgen");
-      BOOST_CHECK(fc::exists("testgen.wallet"));
-      fc::remove("testgen.wallet");
+      BOOST_CHECK(std::filesystem::exists("testgen.wallet"));
+      std::filesystem::remove("testgen.wallet");
    }
 
-   BOOST_CHECK(fc::exists("test.wallet"));
-   BOOST_CHECK(fc::exists("test2.wallet"));
-   fc::remove("test.wallet");
-   fc::remove("test2.wallet");
+   BOOST_CHECK(std::filesystem::exists("test.wallet"));
+   BOOST_CHECK(std::filesystem::exists("test2.wallet"));
+   std::filesystem::remove("test.wallet");
+   std::filesystem::remove("test2.wallet");
 
 } FC_LOG_AND_RETHROW() }
 
@@ -217,7 +217,7 @@ BOOST_AUTO_TEST_CASE(wallet_manager_create_test) {
    try {
       using namespace eosio::wallet;
 
-      if (fc::exists("test.wallet")) fc::remove("test.wallet");
+      if (std::filesystem::exists("test.wallet")) std::filesystem::remove("test.wallet");
 
       wallet_manager wm;
       wm.create("test");
@@ -238,26 +238,26 @@ BOOST_AUTO_TEST_CASE(wallet_manager_create_test) {
       BOOST_CHECK_THROW(wm.create(",<<"), wallet_exception);
       BOOST_CHECK_THROW(wm.create(""), wallet_exception);
 
-      fc::remove("test.wallet");
+      std::filesystem::remove("test.wallet");
 
       wm.create(".test");
-      BOOST_CHECK(fc::exists(".test.wallet"));
-      fc::remove(".test.wallet");
+      BOOST_CHECK(std::filesystem::exists(".test.wallet"));
+      std::filesystem::remove(".test.wallet");
       wm.create("..test");
-      BOOST_CHECK(fc::exists("..test.wallet"));
-      fc::remove("..test.wallet");
+      BOOST_CHECK(std::filesystem::exists("..test.wallet"));
+      std::filesystem::remove("..test.wallet");
       wm.create("...test");
-      BOOST_CHECK(fc::exists("...test.wallet"));
-      fc::remove("...test.wallet");
+      BOOST_CHECK(std::filesystem::exists("...test.wallet"));
+      std::filesystem::remove("...test.wallet");
       wm.create(".");
-      BOOST_CHECK(fc::exists("..wallet"));
-      fc::remove("..wallet");
+      BOOST_CHECK(std::filesystem::exists("..wallet"));
+      std::filesystem::remove("..wallet");
       wm.create("__test_test");
-      BOOST_CHECK(fc::exists("__test_test.wallet"));
-      fc::remove("__test_test.wallet");
+      BOOST_CHECK(std::filesystem::exists("__test_test.wallet"));
+      std::filesystem::remove("__test_test.wallet");
       wm.create("t-t");
-      BOOST_CHECK(fc::exists("t-t.wallet"));
-      fc::remove("t-t.wallet");
+      BOOST_CHECK(std::filesystem::exists("t-t.wallet"));
+      std::filesystem::remove("t-t.wallet");
 
    } FC_LOG_AND_RETHROW()
 }

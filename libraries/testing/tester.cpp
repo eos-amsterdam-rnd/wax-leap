@@ -20,6 +20,35 @@ eosio::chain::asset core_from_string(const std::string& s) {
 }
 
 namespace eosio { namespace testing {
+
+   // required by boost::unit_test::data
+   std::ostream& operator<<(std::ostream& os, setup_policy p) {
+      switch(p) {
+         case setup_policy::none:
+            os << "none";
+            break;
+         case setup_policy::old_bios_only:
+            os << "old_bios_only";
+            break;
+         case setup_policy::preactivate_feature_only:
+            os << "preactivate_feature_only";
+            break;
+         case setup_policy::preactivate_feature_and_new_bios:
+            os << "preactivate_feature_and_new_bios";
+            break;
+         case setup_policy::old_wasm_parser:
+            os << "old_wasm_parser";
+            break;
+         case setup_policy::full:
+            os << "full";
+            break;
+         default:
+            FC_ASSERT(false, "Unknown setup_policy");
+      }
+      return os;
+   }
+
+
    std::string read_wast( const char* fn ) {
       std::ifstream wast_file(fn);
       FC_ASSERT( wast_file.is_open(), "wast file cannot be found" );
@@ -150,8 +179,8 @@ namespace eosio { namespace testing {
      return control->head_block_id() == other.control->head_block_id();
    }
 
-   void base_tester::init(const setup_policy policy, db_read_mode read_mode, std::optional<uint32_t> genesis_max_inline_action_size, std::optional<uint32_t> config_max_nonprivileged_inline_action_size) {
-      auto def_conf = default_config(tempdir, genesis_max_inline_action_size, config_max_nonprivileged_inline_action_size);
+   void base_tester::init(const setup_policy policy, db_read_mode read_mode, std::optional<uint32_t> genesis_max_inline_action_size) {
+      auto def_conf = default_config(tempdir, genesis_max_inline_action_size);
       def_conf.first.read_mode = read_mode;
       cfg = def_conf.first;
 
@@ -236,11 +265,16 @@ namespace eosio { namespace testing {
             set_bios_contract();
             break;
          }
-         case setup_policy::full: {
+         case setup_policy::full:
+         case setup_policy::full_except_do_not_disable_deferred_trx: {
             schedule_preactivate_protocol_feature();
             produce_block();
             set_before_producer_authority_bios_contract();
-            preactivate_all_builtin_protocol_features();
+            if( policy == setup_policy::full ) {
+               preactivate_all_builtin_protocol_features();
+            } else {
+               preactivate_all_but_disable_deferred_trx();
+            }
             produce_block();
             set_bios_contract();
             break;
@@ -272,7 +306,7 @@ namespace eosio { namespace testing {
       if( !expected_chain_id ) {
          expected_chain_id = controller::extract_chain_id_from_db( cfg.state_dir );
          if( !expected_chain_id ) {
-            fc::path retained_dir;
+            std::filesystem::path retained_dir;
             auto partitioned_config = std::get_if<partitioned_blocklog_config>(&cfg.blog);
             if (partitioned_config) {
                retained_dir = partitioned_config->retained_dir;
@@ -508,7 +542,7 @@ namespace eosio { namespace testing {
 
 
   void base_tester::set_transaction_headers( transaction& trx, uint32_t expiration, uint32_t delay_sec ) const {
-     trx.expiration = control->head_block_time() + fc::seconds(expiration);
+     trx.expiration = fc::time_point_sec{control->head_block_time() + fc::seconds(expiration)};
      trx.set_reference_block( control->head_block_id() );
 
      trx.max_net_usage_words = 0; // No limit
@@ -867,7 +901,7 @@ namespace eosio { namespace testing {
                                    .account    = account,
                                    .permission = perm,
                                    .parent     = parent,
-                                   .auth       = move(auth),
+                                   .auth       = std::move(auth),
                                 });
 
          set_transaction_headers(trx);
@@ -936,7 +970,7 @@ namespace eosio { namespace testing {
    } FC_CAPTURE_AND_RETHROW( (account) )
 
 
-   void base_tester::set_abi( account_name account, const char* abi_json, const private_key_type* signer ) {
+   void base_tester::set_abi( account_name account, const std::string& abi_json, const private_key_type* signer ) {
       auto abi = fc::json::from_string(abi_json).template as<abi_def>();
       signed_transaction trx;
       trx.actions.emplace_back( vector<permission_level>{{account,config::active_name}},
@@ -1075,17 +1109,17 @@ namespace eosio { namespace testing {
 
    void base_tester::set_before_preactivate_bios_contract() {
       set_code(config::system_account_name, contracts::before_preactivate_eosio_bios_wasm());
-      set_abi(config::system_account_name, contracts::before_preactivate_eosio_bios_abi().data());
+      set_abi(config::system_account_name, contracts::before_preactivate_eosio_bios_abi());
    }
 
    void base_tester::set_before_producer_authority_bios_contract() {
       set_code(config::system_account_name, contracts::before_producer_authority_eosio_bios_wasm());
-      set_abi(config::system_account_name, contracts::before_producer_authority_eosio_bios_abi().data());
+      set_abi(config::system_account_name, contracts::before_producer_authority_eosio_bios_abi());
    }
 
    void base_tester::set_bios_contract() {
       set_code(config::system_account_name, contracts::eosio_bios_wasm());
-      set_abi(config::system_account_name, contracts::eosio_bios_abi().data());
+      set_abi(config::system_account_name, contracts::eosio_bios_abi());
    }
 
 
@@ -1155,20 +1189,7 @@ namespace eosio { namespace testing {
       }
    }
 
-   void base_tester::preactivate_builtin_protocol_features(const std::vector<builtin_protocol_feature_t>& builtin_features) {
-      const auto& pfs = control->get_protocol_feature_manager().get_protocol_feature_set();
-
-      // This behavior is disabled by configurable_wasm_limits
-      std::vector<digest_type> features;
-      for(builtin_protocol_feature_t feature : builtin_features ) {
-         if( auto digest = pfs.get_builtin_digest( feature ) ) {
-            features.push_back( *digest );
-         }
-      }
-      preactivate_protocol_features(features);
-   }
-
-   void base_tester::preactivate_all_builtin_protocol_features() {
+   void base_tester::preactivate_builtin_protocol_features(const std::vector<builtin_protocol_feature_t>& builtins) {
       const auto& pfm = control->get_protocol_feature_manager();
       const auto& pfs = pfm.get_protocol_feature_set();
       const auto current_block_num  =  control->head_block_num() + (control->is_building_block() ? 1 : 0);
@@ -1196,18 +1217,49 @@ namespace eosio { namespace testing {
          preactivations.emplace_back( feature_digest );
       };
 
-      std::vector<builtin_protocol_feature_t> ordered_builtins;
-      for( const auto& f : builtin_protocol_feature_codenames ) {
-         ordered_builtins.push_back( f.first );
-      }
-      std::sort( ordered_builtins.begin(), ordered_builtins.end() );
-      for( const auto& f : ordered_builtins ) {
+      for( const auto& f : builtins ) {
          auto digest = pfs.get_builtin_digest( f);
          if( !digest ) continue;
          add_digests( *digest );
       }
 
       preactivate_protocol_features( preactivations );
+   }
+
+   std::vector<builtin_protocol_feature_t> base_tester::get_all_builtin_protocol_features() {
+      std::vector<builtin_protocol_feature_t> builtins;
+      for( const auto& f : builtin_protocol_feature_codenames ) {
+         builtins.push_back( f.first );
+      }
+
+      // Sorting is here to ensure a consistent order across platforms given that it is
+      // pulling the items from an std::unordered_map. This order is important because
+      // it impacts the block IDs generated and written out to logs for some tests such
+      // as the deep-mind tests.
+      std::sort( builtins.begin(), builtins.end() );
+
+      return builtins;
+   }
+
+   void base_tester::preactivate_all_builtin_protocol_features() {
+      preactivate_builtin_protocol_features( get_all_builtin_protocol_features() );
+   }
+
+   void base_tester::preactivate_all_but_disable_deferred_trx() {
+      std::vector<builtin_protocol_feature_t> builtins;
+      for( const auto& f : get_all_builtin_protocol_features() ) {
+         // Before deferred trxs feature is fully disabled, existing tests involving
+         // deferred trxs need to be exercised to make sure existing behaviors are
+         // maintained. Excluding DISABLE_DEFERRED_TRXS_STAGE_1 and DISABLE_DEFERRED_TRXS_STAGE_2
+         // from full protocol feature list such that existing tests can run.
+         if( f ==  builtin_protocol_feature_t::disable_deferred_trxs_stage_1 || f  == builtin_protocol_feature_t::disable_deferred_trxs_stage_2 ) {
+            continue;
+         }
+
+         builtins.push_back( f );
+      }
+
+      preactivate_builtin_protocol_features( builtins );
    }
 
    tester::tester(const std::function<void(controller&)>& control_setup, setup_policy policy, db_read_mode read_mode) {

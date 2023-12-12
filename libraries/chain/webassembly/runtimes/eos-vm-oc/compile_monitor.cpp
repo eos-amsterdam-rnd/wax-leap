@@ -71,7 +71,7 @@ struct compile_monitor_session {
                   connection_dead_signal();
                   return;
                }
-               kick_compile_off(compile.code, std::move(fds[0]));
+               kick_compile_off(compile.code, compile.eosvmoc_config, std::move(fds[0]));
             },
             [&](const evict_wasms_message& evict) {
                for(const code_descriptor& cd : evict.codes) {
@@ -90,7 +90,7 @@ struct compile_monitor_session {
       });
    }
 
-   void kick_compile_off(const code_tuple& code_id, wrapped_fd&& wasm_code) {
+   void kick_compile_off(const code_tuple& code_id, const eosvmoc::config& eosvmoc_config, wrapped_fd&& wasm_code) {
       //prepare a requst to go out to the trampoline
       int socks[2];
       socketpair(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0, socks);
@@ -100,7 +100,7 @@ struct compile_monitor_session {
       fds_pass_to_trampoline.emplace_back(socks[1]);
       fds_pass_to_trampoline.emplace_back(std::move(wasm_code));
 
-      eosvmoc_message trampoline_compile_request = compile_wasm_message{code_id};
+      eosvmoc_message trampoline_compile_request = compile_wasm_message{code_id, eosvmoc_config};
       if(write_message_with_fds(_trampoline_socket, trampoline_compile_request, fds_pass_to_trampoline) == false) {
          wasm_compilation_result_message reply{code_id, compilation_result_unknownfailure{}, _allocator->get_free_memory()};
          write_message_with_fds(_nodeos_instance_socket, reply);
@@ -114,7 +114,13 @@ struct compile_monitor_session {
    void read_message_from_compile_task(std::list<std::tuple<code_tuple, local::datagram_protocol::socket>>::iterator current_compile_it) {
       auto& [code, socket] = *current_compile_it;
       socket.async_wait(local::datagram_protocol::socket::wait_read, [this, current_compile_it](auto ec) {
-         //at this point we only expect 1 of 2 things to happen: we either get a reply (success), or we get no reply (failure)
+         //at this point we generally expect 1 of 2 things to happen: we either get a reply (success), or we get an error reading from the
+         // socket (failure). But there is also a third possibility that this compile_monitor_session is being destroyed and thus the
+         // socket is being destroyed by way of current_compiles being destroyed. Since this is an async_wait() and not an async_read(),
+         // for now just consider any error as being due to cancellation at dtor time and completely bail out (there aren't many other
+         // potential errors for an asnyc_wait)
+         if(ec)
+            return;
          auto& [code, socket] = *current_compile_it;
          auto [success, message, fds] = read_message_with_fds(socket);
          

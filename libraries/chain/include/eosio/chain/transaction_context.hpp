@@ -4,6 +4,10 @@
 #include <eosio/chain/platform_timer.hpp>
 #include <signal.h>
 
+namespace eosio::benchmark {
+   struct interface_in_benchmark; // for benchmark testing
+}
+
 namespace eosio { namespace chain {
 
    struct transaction_checktime_timer {
@@ -92,6 +96,7 @@ namespace eosio { namespace chain {
 
          friend struct controller_impl;
          friend class apply_context;
+         friend struct benchmark::interface_in_benchmark; // defined in benchmark/bls.cpp
 
          void add_ram_usage( account_name account, int64_t ram_delta );
 
@@ -186,7 +191,6 @@ namespace eosio { namespace chain {
             speculative_executed_adjusted_max_transaction_time // prev_billed_cpu_time_us > 0
          };
          tx_cpu_usage_exceeded_reason  tx_cpu_usage_reason = tx_cpu_usage_exceeded_reason::account_cpu_limit;
-         fc::microseconds              tx_cpu_usage_amount;
    };
 
 } }

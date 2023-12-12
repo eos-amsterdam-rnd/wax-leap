@@ -24,7 +24,7 @@ namespace fc { namespace crypto {
          private_key() = default;
          private_key( private_key&& ) = default;
          private_key( const private_key& ) = default;
-         private_key& operator= (const private_key& ) = default;
+         private_key& operator=(const private_key& ) = default;
 
          public_key     get_public_key() const;
          signature      sign( const sha256& digest, bool require_canonical = true ) const;
@@ -46,19 +46,18 @@ namespace fc { namespace crypto {
          }
 
          // serialize to/from string
-         explicit private_key(const string& base58str);
-         std::string to_string(const fc::yield_function_t& yield = fc::yield_function_t()) const;
+         explicit private_key(const std::string& base58str);
+         std::string to_string(const fc::yield_function_t& yield) const;
 
       private:
          storage_type _storage;
 
          private_key( storage_type&& other_storage )
-         :_storage(forward<storage_type>(other_storage))
+            :_storage(other_storage)
          {}
 
-         friend bool operator == ( const private_key& p1, const private_key& p2);
-         friend bool operator != ( const private_key& p1, const private_key& p2);
-         friend bool operator < ( const private_key& p1, const private_key& p2);
+         friend bool operator==( const private_key& p1, const private_key& p2 );
+         friend bool operator<( const private_key& p1, const private_key& p2 );
          friend struct reflector<private_key>;
    }; // private_key
 
