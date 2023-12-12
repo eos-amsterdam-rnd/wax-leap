@@ -45,6 +45,9 @@ namespace eosio { namespace chain {
          wasm_interface(vm_type vm, bool eosvmoc_tierup, const chainbase::database& d, const boost::filesystem::path data_dir, const eosvmoc::config& eosvmoc_config, bool profile);
          ~wasm_interface();
 
+         // initialize exec per thread
+         void init_thread_local_data();
+
          //call before dtor to skip what can be minutes of dtor overhead with some runtimes; can cause leaks
          void indicate_shutting_down();
 
@@ -60,8 +63,8 @@ namespace eosio { namespace chain {
          //Calls apply or error on a given code
          void apply(const digest_type& code_hash, const uint8_t& vm_type, const uint8_t& vm_version, apply_context& context);
 
-         //Immediately exits currently running wasm. UB is called when no wasm running
-         void exit();
+         //Returns true if the code is cached
+         bool is_code_cached(const digest_type& code_hash, const uint8_t& vm_type, const uint8_t& vm_version) const;
 
          // If substitute_apply is set, then apply calls it before doing anything else. If substitute_apply returns true,
          // then apply returns immediately.
@@ -69,6 +72,7 @@ namespace eosio { namespace chain {
             const digest_type& code_hash, uint8_t vm_type, uint8_t vm_version, apply_context& context)> substitute_apply;
       private:
          unique_ptr<struct wasm_interface_impl> my;
+         vm_type vm;
    };
 
 } } // eosio::chain

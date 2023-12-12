@@ -117,3 +117,25 @@ bugfix in version string
 ## Release `v3.1.5wax01`
 
 Merged with Leap 3.1.5
+
+## Release `v3.2.0wax01`
+
+Merged with Leap 3.2.0
+
+
+## Release v4.0.0wax01
+
+Merged with Leap 4.0.0
+
+## Release v4.0.1wax01
+
+Merged with Leap 4.0.1
+
+## Release v4.0.4wax01
+
+Merged with Leap 4.0.4
+
+## Release v4.0.4wax02
+
+Adapted snapshot tests for WAX
+

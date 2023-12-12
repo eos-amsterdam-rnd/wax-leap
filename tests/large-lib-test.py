@@ -1,15 +1,11 @@
 #!/usr/bin/env python3
 
-from testUtils import Utils
-from Cluster import Cluster
-from WalletMgr import WalletMgr
-from Node import Node
-from Node import BlockType
-from TestHelper import TestHelper
-
 import random
 import signal
 import time
+
+from TestHarness import Cluster, Node, ReturnType, TestHelper, Utils, WalletMgr
+from TestHarness.Node import BlockType
 
 ###############################################################
 # large-lib-test
@@ -24,7 +20,7 @@ Print=Utils.Print
 errorExit=Utils.errorExit
 
 args=TestHelper.parse_args({"--kill-sig","--kill-count","--keep-logs"
-                            ,"--dump-error-details","-v","--leave-running","--clean-run"
+                            ,"--dump-error-details","-v","--leave-running","--clean-run","--unshared"
                             })
 pnodes=1
 total_nodes=3 # first one is producer, and last two are speculative nodes
@@ -44,7 +40,7 @@ testSuccessful=False
 
 seed=1
 random.seed(seed) # Use a fixed seed for repeatability.
-cluster=Cluster(walletd=True)
+cluster=Cluster(walletd=True,unshared=args.unshared)
 walletMgr=WalletMgr(True)
 cluster.setWalletMgr(walletMgr)
 
@@ -62,21 +58,12 @@ try:
     walletMgr.killall(allInstances=killAll)
     walletMgr.cleanup()
 
-    # set the last two nodes as speculative
-    specificExtraNodeosArgs={}
-    specificExtraNodeosArgs[1]="--read-mode speculative "
-    specificExtraNodeosArgs[2]="--read-mode speculative "
-
     Print("Stand up cluster")
-    traceNodeosArgs=" --plugin eosio::trace_api_plugin --trace-no-abis "
     if cluster.launch(
             pnodes=pnodes,
             totalNodes=total_nodes,
             totalProducers=1,
-            useBiosBootFile=False,
-            topo="mesh",
-            specificExtraNodeosArgs=specificExtraNodeosArgs,
-            extraNodeosArgs=traceNodeosArgs) is False:
+            topo="mesh") is False:
         errorExit("Failed to stand up eos cluster.")
 
     producingNode=cluster.getNode(0)

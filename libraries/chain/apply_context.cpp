@@ -71,51 +71,53 @@ void apply_context::exec_one()
       try {
          action_return_value.clear();
          receiver_account = &db.get<account_metadata_object,by_name>( receiver );
-         privileged = receiver_account->is_privileged();
-         auto native = control.find_apply_handler( receiver, act->account, act->name );
-         if( native ) {
-            if( trx_context.enforce_whiteblacklist && control.is_producing_block() ) {
-               control.check_contract_list( receiver );
-               control.check_action_list( act->account, act->name );
-            }
-            (*native)( *this );
-         }
-
-         if( ( receiver_account->code_hash != digest_type() ) &&
-               (  !( act->account == config::system_account_name
-                     && act->name == "setcode"_n
-                     && receiver == config::system_account_name )
-                  || control.is_builtin_activated( builtin_protocol_feature_t::forward_setcode )
-               )
-         ) {
-            if( trx_context.enforce_whiteblacklist && control.is_producing_block() ) {
-               control.check_contract_list( receiver );
-               control.check_action_list( act->account, act->name );
-            }
-            try {
-               control.get_wasm_interface().apply( receiver_account->code_hash, receiver_account->vm_type, receiver_account->vm_version, *this );
-            } catch( const wasm_exit& ) {}
-         }
-
-         if( !privileged && control.is_builtin_activated( builtin_protocol_feature_t::ram_restrictions ) ) {
-            const size_t checktime_interval = 10;
-            size_t counter = 0;
-            bool   not_in_notify_context = (receiver == act->account);
-            const auto end = _account_ram_deltas.end();
-            for( auto itr = _account_ram_deltas.begin(); itr != end; ++itr, ++counter ) {
-               if( counter == checktime_interval ) {
-                  trx_context.checktime();
-                  counter = 0;
+         if( !(context_free && control.skip_trx_checks()) ) {
+            privileged = receiver_account->is_privileged();
+            auto native = control.find_apply_handler( receiver, act->account, act->name );
+            if( native ) {
+               if( trx_context.enforce_whiteblacklist && control.is_speculative_block() ) {
+                  control.check_contract_list( receiver );
+                  control.check_action_list( act->account, act->name );
                }
-               if( itr->delta > 0 && itr->account != receiver ) {
-                  EOS_ASSERT( not_in_notify_context, unauthorized_ram_usage_increase,
-                              "unprivileged contract cannot increase RAM usage of another account within a notify context: ${account}",
-                              ("account", itr->account)
-                  );
-                  EOS_ASSERT( has_authorization( itr->account ), unauthorized_ram_usage_increase,
-                              "unprivileged contract cannot increase RAM usage of another account that has not authorized the action: ${account}",
-                              ("account", itr->account)
-                  );
+               (*native)( *this );
+            }
+
+            if( ( receiver_account->code_hash != digest_type() ) &&
+                  (  !( act->account == config::system_account_name
+                        && act->name == "setcode"_n
+                        && receiver == config::system_account_name )
+                     || control.is_builtin_activated( builtin_protocol_feature_t::forward_setcode )
+                  )
+            ) {
+               if( trx_context.enforce_whiteblacklist && control.is_speculative_block() ) {
+                  control.check_contract_list( receiver );
+                  control.check_action_list( act->account, act->name );
+               }
+               try {
+                  control.get_wasm_interface().apply( receiver_account->code_hash, receiver_account->vm_type, receiver_account->vm_version, *this );
+               } catch( const wasm_exit& ) {}
+            }
+
+            if( !privileged && control.is_builtin_activated( builtin_protocol_feature_t::ram_restrictions ) ) {
+               const size_t checktime_interval = 10;
+               size_t counter = 0;
+               bool not_in_notify_context = (receiver == act->account);
+               const auto end = _account_ram_deltas.end();
+               for( auto itr = _account_ram_deltas.begin(); itr != end; ++itr, ++counter ) {
+                  if( counter == checktime_interval ) {
+                     trx_context.checktime();
+                     counter = 0;
+                  }
+                  if( itr->delta > 0 && itr->account != receiver ) {
+                     EOS_ASSERT( not_in_notify_context, unauthorized_ram_usage_increase,
+                                 "unprivileged contract cannot increase RAM usage of another account within a notify context: ${account}",
+                                 ("account", itr->account)
+                     );
+                     EOS_ASSERT( has_authorization( itr->account ), unauthorized_ram_usage_increase,
+                                 "unprivileged contract cannot increase RAM usage of another account that has not authorized the action: ${account}",
+                                 ("account", itr->account)
+                     );
+                  }
                }
             }
          }
@@ -180,7 +182,7 @@ void apply_context::exec_one()
       print_debug(receiver, trace);
    }
 
-   if (auto dm_logger = control.get_deep_mind_logger())
+   if (auto dm_logger = control.get_deep_mind_logger(trx_context.is_transient()))
    {
       dm_logger->on_end_action();
    }
@@ -287,7 +289,7 @@ void apply_context::require_recipient( account_name recipient ) {
          schedule_action( action_ordinal, recipient, false )
       );
 
-      if (auto dm_logger = control.get_deep_mind_logger()) {
+      if (auto dm_logger = control.get_deep_mind_logger(trx_context.is_transient())) {
          dm_logger->on_require_recipient();
       }
    }
@@ -314,12 +316,12 @@ void apply_context::execute_inline( action&& a ) {
    EOS_ASSERT( code != nullptr, action_validate_exception,
                "inline action's code account ${account} does not exist", ("account", a.account) );
 
-   bool enforce_actor_whitelist_blacklist = trx_context.enforce_whiteblacklist && control.is_producing_block();
+   bool enforce_actor_whitelist_blacklist = trx_context.enforce_whiteblacklist && control.is_speculative_block();
    flat_set<account_name> actors;
 
    bool disallow_send_to_self_bypass = control.is_builtin_activated( builtin_protocol_feature_t::restrict_action_to_self );
    bool send_to_self = (a.account == receiver);
-   bool inherit_parent_authorizations = (!disallow_send_to_self_bypass && send_to_self && (receiver == act->account) && control.is_producing_block());
+   bool inherit_parent_authorizations = (!disallow_send_to_self_bypass && send_to_self && (receiver == act->account) && control.is_speculative_block());
 
    flat_set<permission_level> inherited_authorizations;
    if( inherit_parent_authorizations ) {
@@ -345,14 +347,14 @@ void apply_context::execute_inline( action&& a ) {
       control.check_actor_list( actors );
    }
 
-   if( !privileged && control.is_producing_block() ) {
+   if( !privileged && control.is_speculative_block() ) {
       const auto& chain_config = control.get_global_properties().configuration;
       EOS_ASSERT( a.data.size() < std::min(chain_config.max_inline_action_size, control.get_max_nonprivileged_inline_action_size()),
                   inline_action_too_big_nonprivileged,
                   "inline action too big for nonprivileged account ${account}", ("account", a.account));
    }
    // No need to check authorization if replaying irreversible blocks or contract is privileged
-   if( !control.skip_auth_check() && !privileged ) {
+   if( !control.skip_auth_check() && !privileged && !trx_context.is_read_only() ) {
       try {
          control.get_authorization_manager()
                 .check_authorization( {a},
@@ -361,7 +363,7 @@ void apply_context::execute_inline( action&& a ) {
                                       control.pending_block_time() - trx_context.published,
                                       std::bind(&transaction_context::checktime, &this->trx_context),
                                       false,
-                                      trx_context.is_read_only,
+                                      trx_context.is_dry_run(), // check_but_dont_fail
                                       inherited_authorizations
                                     );
 
@@ -371,7 +373,7 @@ void apply_context::execute_inline( action&& a ) {
       } catch( const fc::exception& e ) {
          if( disallow_send_to_self_bypass || !send_to_self ) {
             throw;
-         } else if( control.is_producing_block() ) {
+         } else if( control.is_speculative_block() ) {
             subjective_block_production_exception new_exception(FC_LOG_MESSAGE( error, "Authorization failure with inline action sent to self"));
             for (const auto& log: e.get_log()) {
                new_exception.append_log(log);
@@ -381,7 +383,7 @@ void apply_context::execute_inline( action&& a ) {
       } catch( ... ) {
          if( disallow_send_to_self_bypass || !send_to_self ) {
             throw;
-         } else if( control.is_producing_block() ) {
+         } else if( control.is_speculative_block() ) {
             EOS_THROW(subjective_block_production_exception, "Unexpected exception occurred validating inline action sent to self");
          }
       }
@@ -392,7 +394,7 @@ void apply_context::execute_inline( action&& a ) {
       schedule_action( std::move(a), inline_receiver, false )
    );
 
-   if (auto dm_logger = control.get_deep_mind_logger()) {
+   if (auto dm_logger = control.get_deep_mind_logger(trx_context.is_transient())) {
       dm_logger->on_send_inline();
    }
 }
@@ -405,7 +407,7 @@ void apply_context::execute_context_free_inline( action&& a ) {
    EOS_ASSERT( a.authorization.size() == 0, action_validate_exception,
                "context-free actions cannot have authorizations" );
 
-   if( !privileged && control.is_producing_block() ) {
+   if( !privileged && control.is_speculative_block() ) {
       const auto& chain_config = control.get_global_properties().configuration;
       EOS_ASSERT( a.data.size() < std::min(chain_config.max_inline_action_size, control.get_max_nonprivileged_inline_action_size()),
                   inline_action_too_big_nonprivileged,
@@ -417,16 +419,17 @@ void apply_context::execute_context_free_inline( action&& a ) {
       schedule_action( std::move(a), inline_receiver, true )
    );
 
-   if (auto dm_logger = control.get_deep_mind_logger()) {
+   if (auto dm_logger = control.get_deep_mind_logger(trx_context.is_transient())) {
       dm_logger->on_send_context_free_inline();
    }
 }
 
 
 void apply_context::schedule_deferred_transaction( const uint128_t& sender_id, account_name payer, transaction&& trx, bool replace_existing ) {
+   EOS_ASSERT( !trx_context.is_read_only(), transaction_exception, "cannot schedule a deferred transaction from within a readonly transaction" );
    EOS_ASSERT( trx.context_free_actions.size() == 0, cfa_inside_generated_tx, "context free actions are not currently allowed in generated transactions" );
 
-   bool enforce_actor_whitelist_blacklist = trx_context.enforce_whiteblacklist && control.is_producing_block()
+   bool enforce_actor_whitelist_blacklist = trx_context.enforce_whiteblacklist && control.is_speculative_block()
                                              && !control.sender_avoids_whitelist_blacklist_enforcement( receiver );
    trx_context.validate_referenced_accounts( trx, enforce_actor_whitelist_blacklist );
 
@@ -528,7 +531,7 @@ void apply_context::schedule_deferred_transaction( const uint128_t& sender_id, a
       } catch( const fc::exception& e ) {
          if( disallow_send_to_self_bypass || !is_sending_only_to_self(receiver) ) {
             throw;
-         } else if( control.is_producing_block() ) {
+         } else if( control.is_speculative_block() ) {
             subjective_block_production_exception new_exception(FC_LOG_MESSAGE( error, "Authorization failure with sent deferred transaction consisting only of actions to self"));
             for (const auto& log: e.get_log()) {
                new_exception.append_log(log);
@@ -538,7 +541,7 @@ void apply_context::schedule_deferred_transaction( const uint128_t& sender_id, a
       } catch( ... ) {
          if( disallow_send_to_self_bypass || !is_sending_only_to_self(receiver) ) {
             throw;
-         } else if( control.is_producing_block() ) {
+         } else if( control.is_speculative_block() ) {
             EOS_THROW(subjective_block_production_exception, "Unexpected exception occurred validating sent deferred transaction consisting only of actions to self");
          }
       }
@@ -550,12 +553,12 @@ void apply_context::schedule_deferred_transaction( const uint128_t& sender_id, a
 
       bool replace_deferred_activated = control.is_builtin_activated(builtin_protocol_feature_t::replace_deferred);
 
-      EOS_ASSERT( replace_deferred_activated || !control.is_producing_block()
+      EOS_ASSERT( replace_deferred_activated || !control.is_speculative_block()
                      || control.all_subjective_mitigations_disabled(),
                   subjective_block_production_exception,
                   "Replacing a deferred transaction is temporarily disabled." );
 
-      if (auto dm_logger = control.get_deep_mind_logger()) {
+      if (auto dm_logger = control.get_deep_mind_logger(trx_context.is_transient())) {
          dm_logger->on_ram_trace(RAM_EVENT_ID("${id}", ("id", ptr->id)), "deferred_trx", "cancel", "deferred_trx_cancel");
       }
 
@@ -573,7 +576,7 @@ void apply_context::schedule_deferred_transaction( const uint128_t& sender_id, a
          trx_id_for_new_obj = ptr->trx_id;
       }
 
-      if (auto dm_logger = control.get_deep_mind_logger()) {
+      if (auto dm_logger = control.get_deep_mind_logger(trx_context.is_transient())) {
          dm_logger->on_cancel_deferred(deep_mind_handler::operation_qualifier::modify, *ptr);
       }
 
@@ -590,7 +593,7 @@ void apply_context::schedule_deferred_transaction( const uint128_t& sender_id, a
 
          trx_size = gtx.set( trx );
 
-         if (auto dm_logger = control.get_deep_mind_logger()) {
+         if (auto dm_logger = control.get_deep_mind_logger(trx_context.is_transient())) {
             dm_logger->on_send_deferred(deep_mind_handler::operation_qualifier::modify, gtx);
             dm_logger->on_ram_trace(RAM_EVENT_ID("${id}", ("id", gtx.id)), "deferred_trx", "update", "deferred_trx_add");
          }
@@ -607,7 +610,7 @@ void apply_context::schedule_deferred_transaction( const uint128_t& sender_id, a
 
          trx_size = gtx.set( trx );
 
-         if (auto dm_logger = control.get_deep_mind_logger()) {
+         if (auto dm_logger = control.get_deep_mind_logger(trx_context.is_transient())) {
             dm_logger->on_send_deferred(deep_mind_handler::operation_qualifier::none, gtx);
             dm_logger->on_ram_trace(RAM_EVENT_ID("${id}", ("id", gtx.id)), "deferred_trx", "add", "deferred_trx_add");
          }
@@ -624,10 +627,11 @@ void apply_context::schedule_deferred_transaction( const uint128_t& sender_id, a
 }
 
 bool apply_context::cancel_deferred_transaction( const uint128_t& sender_id, account_name sender ) {
+   EOS_ASSERT( !trx_context.is_read_only(), transaction_exception, "cannot cancel a deferred transaction from within a readonly transaction" );
    auto& generated_transaction_idx = db.get_mutable_index<generated_transaction_multi_index>();
    const auto* gto = db.find<generated_transaction_object,by_sender_id>(boost::make_tuple(sender, sender_id));
    if ( gto ) {
-      if (auto dm_logger = control.get_deep_mind_logger()) {
+      if (auto dm_logger = control.get_deep_mind_logger(trx_context.is_transient())) {
          dm_logger->on_cancel_deferred(deep_mind_handler::operation_qualifier::none, *gto);
          dm_logger->on_ram_trace(RAM_EVENT_ID("${id}", ("id", gto->id)), "deferred_trx", "cancel", "deferred_trx_cancel");
       }
@@ -668,7 +672,7 @@ const table_id_object& apply_context::find_or_create_table( name code, name scop
       return *existing_tid;
    }
 
-   if (auto dm_logger = control.get_deep_mind_logger()) {
+   if (auto dm_logger = control.get_deep_mind_logger(trx_context.is_transient())) {
       std::string event_id = RAM_EVENT_ID("${code}:${scope}:${table}",
          ("code", code)
          ("scope", scope)
@@ -685,14 +689,14 @@ const table_id_object& apply_context::find_or_create_table( name code, name scop
       t_id.table = table;
       t_id.payer = payer;
 
-      if (auto dm_logger = control.get_deep_mind_logger()) {
+      if (auto dm_logger = control.get_deep_mind_logger(trx_context.is_transient())) {
          dm_logger->on_create_table(t_id);
       }
    });
 }
 
 void apply_context::remove_table( const table_id_object& tid ) {
-   if (auto dm_logger = control.get_deep_mind_logger()) {
+   if (auto dm_logger = control.get_deep_mind_logger(trx_context.is_transient())) {
       std::string event_id = RAM_EVENT_ID("${code}:${scope}:${table}",
          ("code", tid.code)
          ("scope", tid.scope)
@@ -703,7 +707,7 @@ void apply_context::remove_table( const table_id_object& tid ) {
 
    update_db_usage(tid.payer, - config::billable_size_v<table_id_object>);
 
-   if (auto dm_logger = control.get_deep_mind_logger()) {
+   if (auto dm_logger = control.get_deep_mind_logger(trx_context.is_transient())) {
       dm_logger->on_remove_table(tid);
    }
 
@@ -776,11 +780,13 @@ int apply_context::get_context_free_data( uint32_t index, char* buffer, size_t b
 }
 
 int apply_context::db_store_i64( name scope, name table, const account_name& payer, uint64_t id, const char* buffer, size_t buffer_size ) {
+   EOS_ASSERT( !trx_context.is_read_only(), table_operation_not_permitted, "cannot store a db record when executing a readonly transaction" );
    return db_store_i64( receiver, scope, table, payer, id, buffer, buffer_size);
 }
 
 int apply_context::db_store_i64( name code, name scope, name table, const account_name& payer, uint64_t id, const char* buffer, size_t buffer_size ) {
 //   require_write_lock( scope );
+   EOS_ASSERT( !trx_context.is_read_only(), table_operation_not_permitted, "cannot store a db record when executing a readonly transaction" );
    const auto& tab = find_or_create_table( code, scope, table, payer );
    auto tableid = tab.id;
 
@@ -799,7 +805,7 @@ int apply_context::db_store_i64( name code, name scope, name table, const accoun
 
    int64_t billable_size = (int64_t)(buffer_size + config::billable_size_v<key_value_object>);
 
-   if (auto dm_logger = control.get_deep_mind_logger()) {
+   if (auto dm_logger = control.get_deep_mind_logger(trx_context.is_transient())) {
       std::string event_id = RAM_EVENT_ID("${table_code}:${scope}:${table_name}:${primkey}",
          ("table_code", tab.code)
          ("scope", tab.scope)
@@ -811,7 +817,7 @@ int apply_context::db_store_i64( name code, name scope, name table, const accoun
 
    update_db_usage( payer, billable_size);
 
-   if (auto dm_logger = control.get_deep_mind_logger()) {
+   if (auto dm_logger = control.get_deep_mind_logger(trx_context.is_transient())) {
       dm_logger->on_db_store_i64(tab, obj);
    }
 
@@ -820,6 +826,7 @@ int apply_context::db_store_i64( name code, name scope, name table, const accoun
 }
 
 void apply_context::db_update_i64( int iterator, account_name payer, const char* buffer, size_t buffer_size ) {
+   EOS_ASSERT( !trx_context.is_read_only(), table_operation_not_permitted, "cannot update a db record when executing a readonly transaction" );
    const key_value_object& obj = keyval_cache.get( iterator );
 
    const auto& table_obj = keyval_cache.get_table( obj.t_id );
@@ -834,7 +841,7 @@ void apply_context::db_update_i64( int iterator, account_name payer, const char*
    if( payer == account_name() ) payer = obj.payer;
 
    std::string event_id;
-   if (control.get_deep_mind_logger() != nullptr) {
+   if (control.get_deep_mind_logger(trx_context.is_transient()) != nullptr) {
       event_id = RAM_EVENT_ID("${table_code}:${scope}:${table_name}:${primkey}",
          ("table_code", table_obj.code)
          ("scope", table_obj.scope)
@@ -845,27 +852,27 @@ void apply_context::db_update_i64( int iterator, account_name payer, const char*
 
    if( account_name(obj.payer) != payer ) {
       // refund the existing payer
-      if (auto dm_logger = control.get_deep_mind_logger())
+      if (auto dm_logger = control.get_deep_mind_logger(trx_context.is_transient()))
       {
          dm_logger->on_ram_trace(std::string(event_id), "table_row", "remove", "primary_index_update_remove_old_payer");
       }
       update_db_usage( obj.payer,  -(old_size) );
       // charge the new payer
-      if (auto dm_logger = control.get_deep_mind_logger())
+      if (auto dm_logger = control.get_deep_mind_logger(trx_context.is_transient()))
       {
          dm_logger->on_ram_trace(std::move(event_id), "table_row", "add", "primary_index_update_add_new_payer");
       }
       update_db_usage( payer,  (new_size));
    } else if(old_size != new_size) {
       // charge/refund the existing payer the difference
-      if (auto dm_logger = control.get_deep_mind_logger())
+      if (auto dm_logger = control.get_deep_mind_logger(trx_context.is_transient()))
       {
          dm_logger->on_ram_trace(std::move(event_id) , "table_row", "update", "primary_index_update");
       }
       update_db_usage( obj.payer, new_size - old_size);
    }
 
-   if (auto dm_logger = control.get_deep_mind_logger()) {
+   if (auto dm_logger = control.get_deep_mind_logger(trx_context.is_transient())) {
       dm_logger->on_db_update_i64(table_obj, obj, payer, buffer, buffer_size);
    }
 
@@ -876,6 +883,7 @@ void apply_context::db_update_i64( int iterator, account_name payer, const char*
 }
 
 void apply_context::db_remove_i64( int iterator ) {
+   EOS_ASSERT( !trx_context.is_read_only(), table_operation_not_permitted, "cannot remove a db record when executing a readonly transaction" );
    const key_value_object& obj = keyval_cache.get( iterator );
 
    const auto& table_obj = keyval_cache.get_table( obj.t_id );
@@ -883,7 +891,7 @@ void apply_context::db_remove_i64( int iterator ) {
 
 //   require_write_lock( table_obj.scope );
 
-   if (auto dm_logger = control.get_deep_mind_logger()) {
+   if (auto dm_logger = control.get_deep_mind_logger(trx_context.is_transient())) {
       std::string event_id = RAM_EVENT_ID("${table_code}:${scope}:${table_name}:${primkey}",
          ("table_code", table_obj.code)
          ("scope", table_obj.scope)
@@ -895,7 +903,7 @@ void apply_context::db_remove_i64( int iterator ) {
 
    update_db_usage( obj.payer,  -(obj.value.size() + config::billable_size_v<key_value_object>) );
 
-   if (auto dm_logger = control.get_deep_mind_logger()) {
+   if (auto dm_logger = control.get_deep_mind_logger(trx_context.is_transient())) {
       dm_logger->on_db_remove_i64(table_obj, obj);
    }
 
@@ -1027,17 +1035,27 @@ int apply_context::db_end_i64( name code, name scope, name table ) {
 
 uint64_t apply_context::next_global_sequence() {
    const auto& p = control.get_dynamic_global_properties();
-   db.modify( p, [&]( auto& dgp ) {
-      ++dgp.global_action_sequence;
-   });
-   return p.global_action_sequence;
+   if ( trx_context.is_read_only() ) {
+      // To avoid confusion of duplicated global sequence number, hard code to be 0.
+      return 0;
+   } else {
+      db.modify( p, [&]( auto& dgp ) {
+         ++dgp.global_action_sequence;
+      });
+      return p.global_action_sequence;
+   }
 }
 
 uint64_t apply_context::next_recv_sequence( const account_metadata_object& receiver_account ) {
-   db.modify( receiver_account, [&]( auto& ra ) {
-      ++ra.recv_sequence;
-   });
-   return receiver_account.recv_sequence;
+   if ( trx_context.is_read_only() ) {
+      // To avoid confusion of duplicated receive sequence number, hard code to be 0.
+      return 0;
+   } else {
+      db.modify( receiver_account, [&]( auto& ra ) {
+         ++ra.recv_sequence;
+      });
+      return receiver_account.recv_sequence;
+   }
 }
 uint64_t apply_context::next_auth_sequence( account_name actor ) {
    const auto& amo = db.get<account_metadata_object,by_name>( actor );

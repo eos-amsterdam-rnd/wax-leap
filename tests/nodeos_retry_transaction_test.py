@@ -1,17 +1,12 @@
 #!/usr/bin/env python3
 
-from testUtils import Utils
-import time
 import signal
-from Cluster import Cluster
-from Cluster import NamedAccounts
-from core_symbol import CORE_SYMBOL
-from WalletMgr import WalletMgr
-from Node import Node
-from TestHelper import TestHelper
-from TestHelper import AppArgs
-
+import time
 import json
+
+from TestHarness import Cluster, Node, TestHelper, Utils, WalletMgr, CORE_SYMBOL
+from TestHarness.Cluster import NamedAccounts
+from TestHarness.TestHelper import AppArgs
 
 ###############################################################
 # nodeos_retry_transaction_test
@@ -36,7 +31,7 @@ extraArgs = appArgs.add(flag="--transaction-time-delta", type=int, help="How man
 extraArgs = appArgs.add(flag="--num-transactions", type=int, help="How many total transactions should be sent", default=1000)
 extraArgs = appArgs.add(flag="--max-transactions-per-second", type=int, help="How many transactions per second should be sent", default=50)
 extraArgs = appArgs.add(flag="--total-accounts", type=int, help="How many accounts should be involved in sending transfers.  Must be greater than %d" % (minTotalAccounts), default=10)
-args = TestHelper.parse_args({"--dump-error-details","--keep-logs","-v","--leave-running","--clean-run"}, applicationSpecificArgs=appArgs)
+args = TestHelper.parse_args({"--dump-error-details","--keep-logs","-v","--leave-running","--clean-run","--unshared"}, applicationSpecificArgs=appArgs)
 
 Utils.Debug=args.v
 totalProducerNodes=3
@@ -44,7 +39,7 @@ totalNodes=7
 totalNonProducerNodes=totalNodes-totalProducerNodes
 maxActiveProducers=totalProducerNodes
 totalProducers=totalProducerNodes
-cluster=Cluster(walletd=True)
+cluster=Cluster(walletd=True,unshared=args.unshared)
 dumpErrorDetails=args.dump_error_details
 keepLogs=args.keep_logs
 dontKill=args.leave_running
@@ -81,19 +76,16 @@ try:
     Print("Stand up cluster")
 
     specificExtraNodeosArgs={
-        3:"--transaction-retry-max-storage-size-gb 5 --disable-api-persisted-trx", # api node
-        4:"--disable-api-persisted-trx",                                           # relay only, will be killed
-        5:"--transaction-retry-max-storage-size-gb 5",                             # api node, will be isolated
-        6:"--disable-api-persisted-trx"                                            # relay only, will be killed
+        3:"--transaction-retry-max-storage-size-gb 5", # api node
+        4:"",                                          # relay only, will be killed
+        5:"--transaction-retry-max-storage-size-gb 5", # api node, will be isolated
+        6:""                                           # relay only, will be killed
     }
 
     # topo=ring all nodes are connected in a ring but also to the bios node
-    traceNodeosArgs=' --plugin eosio::trace_api_plugin --trace-no-abis '
     if cluster.launch(pnodes=totalProducerNodes, totalNodes=totalNodes, totalProducers=totalProducers,
                       topo="ring",
-                      specificExtraNodeosArgs=specificExtraNodeosArgs,
-                      extraNodeosArgs=traceNodeosArgs,
-                      useBiosBootFile=False) is False:
+                      specificExtraNodeosArgs=specificExtraNodeosArgs) is False:
         Utils.cmdError("launcher")
         Utils.errorExit("Failed to stand up eos cluster.")
 
@@ -198,7 +190,7 @@ try:
                         Print("Transaction not found for trans id: %s. Will wait %d seconds to see if it arrives in a block." %
                               (transId, args.transaction_time_delta))
                     transTimeDelayed = True
-                    node.waitForTransInBlock(transId, timeout = args.transaction_time_delta)
+                    node.waitForTransactionInBlock(transId, timeout = args.transaction_time_delta)
                     continue
 
             lastIrreversibleBlockNum = node.getIrreversibleBlockNum()

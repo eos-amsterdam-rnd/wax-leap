@@ -5,17 +5,17 @@
 
 namespace eosio {
 
-static appbase::abstract_plugin& _db_size_api_plugin = app().register_plugin<db_size_api_plugin>();
+   static auto _db_size_api_plugin = application::register_plugin<db_size_api_plugin>();
 
 using namespace eosio;
 
 #define CALL_WITH_400(api_name, api_handle, call_name, INVOKE, http_response_code) \
 {std::string("/v1/" #api_name "/" #call_name), \
-   [api_handle](string, string body, url_response_callback cb) mutable { \
+   [api_handle](string&&, string&& body, url_response_callback&& cb) mutable { \
           try { \
              body = parse_params<std::string, http_params_types::no_params>(body); \
              INVOKE \
-             cb(http_response_code, fc::variant(result)); \
+             cb(http_response_code, fc::time_point::maximum(), fc::variant(result)); \
           } catch (...) { \
              http_plugin::handle_exception(#api_name, #call_name, body, cb); \
           } \
@@ -28,7 +28,7 @@ using namespace eosio;
 void db_size_api_plugin::plugin_startup() {
    app().get_plugin<http_plugin>().add_api({
        CALL_WITH_400(db_size, this, get,  INVOKE_R_V(this, get), 200),
-   });
+   }, appbase::exec_queue::read_only);
 }
 
 db_size_stats db_size_api_plugin::get() {

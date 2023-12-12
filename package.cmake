@@ -21,6 +21,20 @@ if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.9" AND EXISTS /etc/os-release)
       string(APPEND CPACK_PACKAGE_FILE_NAME "-el${CMAKE_MATCH_1}")
    endif()
 endif()
+
+# Fix debian package filename as it should have the format:
+# <PackageName>_<VersionNumber>_<DebianArchitecture>.deb
+
+# Find architecture using dpkg
+if (DPKG_FOUND)
+    execute_process(COMMAND bash -c "${DPKG_FOUND} --print-architecture"
+        OUTPUT_VARIABLE CPACK_DEBIAN_PACKAGE_ARCHITECTURE
+        OUTPUT_STRIP_TRAILING_WHITESPACE)
+else()
+    set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "${CMAKE_SYSTEM_PROCESSOR}")
+endif()
+string(REGEX REPLACE "^${CMAKE_PROJECT_NAME}-(.*)$" "${CMAKE_PROJECT_NAME}_\\1_${CPACK_DEBIAN_PACKAGE_ARCHITECTURE}" CPACK_DEBIAN_FILE_NAME "${CPACK_PACKAGE_FILE_NAME}")
+
 string(APPEND CPACK_PACKAGE_FILE_NAME "-${CMAKE_SYSTEM_PROCESSOR}")
 
 set(CPACK_PACKAGE_CONTACT "cc32d9")
@@ -42,11 +56,11 @@ list(REMOVE_ITEM CPACK_COMPONENTS_ALL "Unspecified")
 #enable per component packages for .deb; ensure main package is just "leap", not "leap-base", and make the dev package have "leap-dev" at the front not the back
 set(CPACK_DEB_COMPONENT_INSTALL ON)
 set(CPACK_DEBIAN_BASE_PACKAGE_NAME "${CMAKE_PROJECT_NAME}")
-set(CPACK_DEBIAN_BASE_FILE_NAME "${CPACK_PACKAGE_FILE_NAME}.deb")
+set(CPACK_DEBIAN_BASE_FILE_NAME "${CPACK_DEBIAN_FILE_NAME}.deb")
 string(REGEX REPLACE "^(${CMAKE_PROJECT_NAME})" "\\1-dev" CPACK_DEBIAN_DEV_FILE_NAME "${CPACK_DEBIAN_BASE_FILE_NAME}")
 
 #deb package tooling will be unable to detect deps for the dev package. llvm is tricky since we don't know what package could have been used; try to figure it out
-set(CPACK_DEBIAN_DEV_PACKAGE_DEPENDS "libboost-all-dev, libssl-dev, libgmp-dev")
+set(CPACK_DEBIAN_DEV_PACKAGE_DEPENDS "libboost-all-dev, libssl-dev, libgmp-dev, python3-numpy")
 find_program(DPKG_QUERY "dpkg-query")
 if(DPKG_QUERY AND OS_RELEASE MATCHES "\n?ID=\"?ubuntu" AND LLVM_CMAKE_DIR)
    execute_process(COMMAND "${DPKG_QUERY}" -S "${LLVM_CMAKE_DIR}" COMMAND cut -d: -f1 RESULT_VARIABLE LLVM_PKG_FIND_RESULT OUTPUT_VARIABLE LLVM_PKG_FIND_OUTPUT)
@@ -55,6 +69,7 @@ if(DPKG_QUERY AND OS_RELEASE MATCHES "\n?ID=\"?ubuntu" AND LLVM_CMAKE_DIR)
       string(APPEND CPACK_DEBIAN_DEV_PACKAGE_DEPENDS ", ${LLVM_PKG_FIND_OUTPUT}")
    endif()
 endif()
+set(CPACK_DEBIAN_DEV_PACKAGE_CONTROL_EXTRA "${CMAKE_BINARY_DIR}/scripts/postinst;${CMAKE_BINARY_DIR}/scripts/prerm")
 
 #since rpm packages aren't component based, make sure description picks up more detailed description instead of just summary
 set(CPACK_RPM_PACKAGE_DESCRIPTION "${CPACK_COMPONENT_BASE_DESCRIPTION}")

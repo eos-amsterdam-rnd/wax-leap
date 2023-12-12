@@ -1,19 +1,13 @@
 #!/usr/bin/env python3
 
-from testUtils import Utils
-from Cluster import Cluster
-from WalletMgr import WalletMgr
-from Node import Node
-from Node import ReturnType
-from TestHelper import TestHelper
-from testUtils import Account
-
 import re
 import os
 import time
 import signal
 import subprocess
 import shutil
+
+from TestHarness import Cluster, Node, ReturnType, TestHelper, Utils, WalletMgr
 
 ###############################################################
 # nodeos_irreversible_mode_test
@@ -27,10 +21,10 @@ errorExit = Utils.errorExit
 cmdError = Utils.cmdError
 relaunchTimeout = 30
 numOfProducers = 4
-totalNodes = 10
+totalNodes = 20
 
 # Parse command line arguments
-args = TestHelper.parse_args({"-v","--clean-run","--dump-error-details","--leave-running","--keep-logs"})
+args = TestHelper.parse_args({"-v","--clean-run","--dump-error-details","--leave-running","--keep-logs","--unshared"})
 Utils.Debug = args.v
 killAll=args.clean_run
 dumpErrorDetails=args.dump_error_details
@@ -38,10 +32,12 @@ dontKill=args.leave_running
 killEosInstances=not dontKill
 killWallet=not dontKill
 keepLogs=args.keep_logs
+speculativeReadMode="head"
+blockLogRetainBlocks="10000"
 
 # Setup cluster and it's wallet manager
 walletMgr=WalletMgr(True)
-cluster=Cluster(walletd=True)
+cluster=Cluster(walletd=True,unshared=args.unshared)
 cluster.setWalletMgr(walletMgr)
 
 def backupBlksDir(nodeId):
@@ -170,20 +166,28 @@ try:
    TestHelper.printSystemInfo("BEGIN")
    cluster.killall(allInstances=killAll)
    cluster.cleanup()
-   traceNodeosArgs = " --plugin eosio::trace_api_plugin --trace-no-abis "
    cluster.launch(
       prodCount=numOfProducers,
       totalProducers=numOfProducers,
       totalNodes=totalNodes,
       pnodes=1,
-      useBiosBootFile=False,
       topo="mesh",
-      extraNodeosArgs=traceNodeosArgs,
       specificExtraNodeosArgs={
          0:"--enable-stale-production",
          4:"--read-mode irreversible",
          6:"--read-mode irreversible",
-         9:"--plugin eosio::producer_api_plugin"})
+         9:"--plugin eosio::producer_api_plugin",
+        10:"--read-mode speculative",
+        11:"--read-mode irreversible",
+        12:"--read-mode speculative",
+        13:"--read-mode irreversible",
+        14:"--read-mode speculative --plugin eosio::producer_api_plugin",
+        15:"--read-mode speculative",
+        16:"--read-mode irreversible",
+        17:"--read-mode speculative",
+        18:"--read-mode irreversible",
+        19:"--read-mode speculative --plugin eosio::producer_api_plugin"
+        })
 
    producingNodeId = 0
    producingNode = cluster.getNode(producingNodeId)
@@ -220,7 +224,7 @@ try:
          resultDesc = "!!!TEST CASE #{} ({}) IS SUCCESSFUL".format(nodeIdOfNodeToTest, runTestScenario.__name__)
          testResult = True
       except Exception as e:
-         resultDesc = "!!!BUG IS CONFIRMED ON TEST CASE #{} ({}): {}".format(nodeIdOfNodeToTest, runTestScenario.__name__, e)
+         resultDesc = "!!!BUG ON TEST CASE #{} ({}): {}".format(nodeIdOfNodeToTest, runTestScenario.__name__, e)
       finally:
          Utils.Print(resultDesc)
          testResultMsgs.append(resultDesc)
@@ -263,7 +267,7 @@ try:
 
       # Kill and relaunch in irreversible mode
       nodeToTest.kill(signal.SIGTERM)
-      relaunchNode(nodeToTest, chainArg=" --read-mode irreversible")
+      relaunchNode(nodeToTest, addSwapFlags={"--read-mode": "irreversible", "--block-log-retain-blocks":blockLogRetainBlocks})
 
       # Ensure the node condition is as expected after relaunch
       confirmHeadLibAndForkDbHeadOfIrrMode(nodeToTest, headLibAndForkDbHeadBeforeSwitchMode)
@@ -276,7 +280,7 @@ try:
 
       # Kill and relaunch in speculative mode
       nodeToTest.kill(signal.SIGTERM)
-      relaunchNode(nodeToTest, addSwapFlags={"--read-mode": "speculative"})
+      relaunchNode(nodeToTest, addSwapFlags={"--read-mode": speculativeReadMode, "--block-log-retain-blocks":blockLogRetainBlocks})
 
       # Ensure the node condition is as expected after relaunch
       confirmHeadLibAndForkDbHeadOfSpecMode(nodeToTest, headLibAndForkDbHeadBeforeSwitchMode)
@@ -292,7 +296,7 @@ try:
          # Kill and relaunch in irreversible mode
          nodeToTest.kill(signal.SIGTERM)
          waitForBlksProducedAndLibAdvanced() # Wait for some blks to be produced and lib advance
-         relaunchNode(nodeToTest, chainArg=" --read-mode irreversible")
+         relaunchNode(nodeToTest, addSwapFlags={"--read-mode": "irreversible", "--block-log-retain-blocks":blockLogRetainBlocks})
 
          # Ensure the node condition is as expected after relaunch
          ensureHeadLibAndForkDbHeadIsAdvancing(nodeToTest)
@@ -311,7 +315,7 @@ try:
          # Kill and relaunch in irreversible mode
          nodeToTest.kill(signal.SIGTERM)
          waitForBlksProducedAndLibAdvanced() # Wait for some blks to be produced and lib advance)
-         relaunchNode(nodeToTest, addSwapFlags={"--read-mode": "speculative"})
+         relaunchNode(nodeToTest, addSwapFlags={"--read-mode": speculativeReadMode, "--block-log-retain-blocks":blockLogRetainBlocks})
 
          # Ensure the node condition is as expected after relaunch
          ensureHeadLibAndForkDbHeadIsAdvancing(nodeToTest)
@@ -369,7 +373,7 @@ try:
          backupBlksDir(nodeIdOfNodeToTest)
 
          # Relaunch in irreversible mode and create the snapshot
-         relaunchNode(nodeToTest, chainArg=" --read-mode irreversible")
+         relaunchNode(nodeToTest, addSwapFlags={"--read-mode": "irreversible"})
          confirmHeadLibAndForkDbHeadOfIrrMode(nodeToTest)
          nodeToTest.createSnapshot()
          nodeToTest.kill(signal.SIGTERM)
@@ -377,7 +381,7 @@ try:
          # Start from clean data dir, recover back up blocks, and then relaunch with irreversible snapshot
          removeState(nodeIdOfNodeToTest)
          recoverBackedupBlksDir(nodeIdOfNodeToTest) # this function will delete the existing blocks dir first
-         relaunchNode(nodeToTest, chainArg=" --snapshot {}".format(getLatestSnapshot(nodeIdOfNodeToTest)), addSwapFlags={"--read-mode": "speculative"})
+         relaunchNode(nodeToTest, chainArg=" --snapshot {}".format(getLatestSnapshot(nodeIdOfNodeToTest)), addSwapFlags={"--read-mode": speculativeReadMode})
          confirmHeadLibAndForkDbHeadOfSpecMode(nodeToTest)
          # Ensure it automatically replays "reversible blocks", i.e. head lib and fork db should be the same
          headLibAndForkDbHeadAfterRelaunch = getHeadLibAndForkDbHead(nodeToTest)
@@ -403,6 +407,50 @@ try:
       finally:
          stopProdNode()
 
+   # 10th test case: Load an irreversible snapshot into a node running without a block log
+   # Expectation: Node launches successfully
+   #              and the head and lib should be advancing after some blocks produced
+   def switchToNoBlockLogWithIrrModeSnapshot(nodeIdOfNodeToTest, nodeToTest):
+      try:
+         # Kill node and backup blocks directory of speculative mode
+         headLibAndForkDbHeadBeforeShutdown = getHeadLibAndForkDbHead(nodeToTest)
+         nodeToTest.kill(signal.SIGTERM)
+
+         # Relaunch in irreversible mode and create the snapshot
+         relaunchNode(nodeToTest, addSwapFlags={"--read-mode": "irreversible", "--block-log-retain-blocks":"0"})
+         confirmHeadLibAndForkDbHeadOfIrrMode(nodeToTest)
+         nodeToTest.createSnapshot()
+         nodeToTest.kill(signal.SIGTERM)
+
+         # Start from clean data dir and then relaunch with irreversible snapshot, no block log means that fork_db will be reset
+         removeState(nodeIdOfNodeToTest)
+         relaunchNode(nodeToTest, chainArg=" --snapshot {}".format(getLatestSnapshot(nodeIdOfNodeToTest)), addSwapFlags={"--read-mode": speculativeReadMode, "--block-log-retain-blocks":"0"})
+         confirmHeadLibAndForkDbHeadOfSpecMode(nodeToTest)
+         # Ensure it does not replay "reversible blocks", i.e. head and lib should be different
+         headLibAndForkDbHeadAfterRelaunch = getHeadLibAndForkDbHead(nodeToTest)
+         assert headLibAndForkDbHeadBeforeShutdown != headLibAndForkDbHeadAfterRelaunch, \
+            "1: Head, Lib, and Fork Db same after relaunch {} vs {}".format(headLibAndForkDbHeadBeforeShutdown, headLibAndForkDbHeadAfterRelaunch)
+
+         # Start production and wait until lib advance, ensure everything is alright
+         startProdNode()
+         ensureHeadLibAndForkDbHeadIsAdvancing(nodeToTest)
+
+         # Note the head, lib and fork db head
+         stopProdNode()
+         headLibAndForkDbHeadBeforeShutdown = getHeadLibAndForkDbHead(nodeToTest)
+         nodeToTest.kill(signal.SIGTERM)
+
+         # Relaunch the node again (using the same snapshot)
+         # The end result should be the same as before shutdown
+         removeState(nodeIdOfNodeToTest)
+         relaunchNode(nodeToTest)
+         headLibAndForkDbHeadAfterRelaunch2 = getHeadLibAndForkDbHead(nodeToTest)
+         assert headLibAndForkDbHeadAfterRelaunch == headLibAndForkDbHeadAfterRelaunch2, \
+            "2: Head, Lib, and Fork Db after relaunch is different {} vs {}".format(headLibAndForkDbHeadAfterRelaunch, headLibAndForkDbHeadAfterRelaunch2)
+      finally:
+         stopProdNode()
+
+
    # Start executing test cases here
    testSuccessful = executeTest(1, replayInIrrModeWithRevBlks)
    testSuccessful = testSuccessful and executeTest(2, replayInIrrModeWithoutRevBlks)
@@ -413,6 +461,23 @@ try:
    testSuccessful = testSuccessful and executeTest(7, replayInIrrModeWithRevBlksAndConnectedToProdNode)
    testSuccessful = testSuccessful and executeTest(8, replayInIrrModeWithoutRevBlksAndConnectedToProdNode)
    testSuccessful = testSuccessful and executeTest(9, switchToSpecModeWithIrrModeSnapshot)
+
+   # retest with read-mode speculative instead of head
+   speculativeReadMode="speculative"
+   testSuccessful = testSuccessful and executeTest(10, switchSpecToIrrMode)
+   testSuccessful = testSuccessful and executeTest(11, switchIrrToSpecMode)
+   testSuccessful = testSuccessful and executeTest(12, switchSpecToIrrModeWithConnectedToProdNode)
+   testSuccessful = testSuccessful and executeTest(13, switchIrrToSpecModeWithConnectedToProdNode)
+   testSuccessful = testSuccessful and executeTest(14, switchToSpecModeWithIrrModeSnapshot)
+
+   # retest with read-mode head and no block log
+   speculativeReadMode="head"
+   blockLogRetainBlocks="0"
+   testSuccessful = testSuccessful and executeTest(15, switchSpecToIrrMode)
+   testSuccessful = testSuccessful and executeTest(16, switchIrrToSpecMode)
+   testSuccessful = testSuccessful and executeTest(17, switchSpecToIrrModeWithConnectedToProdNode)
+   testSuccessful = testSuccessful and executeTest(18, switchIrrToSpecModeWithConnectedToProdNode)
+   testSuccessful = testSuccessful and executeTest(19, switchToNoBlockLogWithIrrModeSnapshot)
 
 finally:
    TestHelper.shutdown(cluster, walletMgr, testSuccessful, killEosInstances, killWallet, keepLogs, killAll, dumpErrorDetails)

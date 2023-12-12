@@ -8,7 +8,7 @@
 #include <boost/mpl/list.hpp>
 #include <boost/test/unit_test.hpp>
 
-#include <contracts.hpp>
+#include <test_contracts.hpp>
 #include <snapshots.hpp>
 
 using namespace eosio;
@@ -24,10 +24,66 @@ void remove_existing_blocks(controller::config& config) {
 
 void block_log_set_buff_len(uint64_t len);
 
+void remove_existing_states(controller::config& config) {
+   auto state_path = config.state_dir;
+   remove_all(state_path);
+   fc::create_directories(state_path);
+}
+
+struct dummy_action {
+   static eosio::chain::name get_name() { return "dummyaction"_n; }
+   static eosio::chain::name get_account() { return "testapi"_n; }
+
+   char     a; // 1
+   uint64_t b; // 8
+   int32_t  c; // 4
+};
+
+struct cf_action {
+   static eosio::chain::name get_name() { return "cfaction"_n; }
+   static eosio::chain::name get_account() { return "testapi"_n; }
+
+   uint32_t payload = 100;
+   uint32_t cfd_idx = 0; // context free data index
+};
+
+FC_REFLECT(dummy_action, (a)(b)(c))
+FC_REFLECT(cf_action, (payload)(cfd_idx))
+
+#define DUMMY_ACTION_DEFAULT_A 0x45
+#define DUMMY_ACTION_DEFAULT_B 0xab11cd1244556677
+#define DUMMY_ACTION_DEFAULT_C 0x7451ae12
+
+class replay_tester : public base_tester {
+ public:
+   template <typename OnAppliedTrx>
+   replay_tester(controller::config config, const genesis_state& genesis, OnAppliedTrx&& on_applied_trx) {
+      cfg = config;
+      base_tester::open(make_protocol_feature_set(), genesis.compute_chain_id(), [&genesis,&control=this->control, &on_applied_trx]() {
+         control->applied_transaction.connect(on_applied_trx);
+         control->startup( [](){}, []() { return false; }, genesis );
+      });
+   }
+   using base_tester::produce_block;
+
+   signed_block_ptr produce_block(fc::microseconds skip_time = fc::milliseconds(config::block_interval_ms)) override {
+      return _produce_block(skip_time, false);
+   }
+
+   signed_block_ptr
+   produce_empty_block(fc::microseconds skip_time = fc::milliseconds(config::block_interval_ms)) override {
+      unapplied_transactions.add_aborted(control->abort_block());
+      return _produce_block(skip_time, true);
+   }
+
+   signed_block_ptr finish_block() override { return _finish_block(); }
+
+   bool validate() { return true; }
+};
+
 BOOST_AUTO_TEST_SUITE(restart_chain_tests)
 
-BOOST_AUTO_TEST_CASE(test_existing_state_without_block_log)
-{
+BOOST_AUTO_TEST_CASE(test_existing_state_without_block_log) {
    tester chain;
 
    std::vector<signed_block_ptr> blocks;
@@ -57,8 +113,7 @@ BOOST_AUTO_TEST_CASE(test_existing_state_without_block_log)
    }
 }
 
-BOOST_AUTO_TEST_CASE(test_restart_with_different_chain_id)
-{
+BOOST_AUTO_TEST_CASE(test_restart_with_different_chain_id) {
    tester chain;
 
    std::vector<signed_block_ptr> blocks;
@@ -75,78 +130,111 @@ BOOST_AUTO_TEST_CASE(test_restart_with_different_chain_id)
    other.close();
    genesis_state genesis;
    genesis.initial_timestamp = fc::time_point::from_iso_string("2020-01-01T00:00:01.000");
-   genesis.initial_key = eosio::testing::base_tester::get_public_key( config::system_account_name, "active" );
+   genesis.initial_key       = eosio::testing::base_tester::get_public_key(config::system_account_name, "active");
    std::optional<chain_id_type> chain_id = genesis.compute_chain_id();
-   BOOST_REQUIRE_EXCEPTION(other.open(chain_id), chain_id_type_exception, fc_exception_message_starts_with("chain ID in state "));
+   BOOST_REQUIRE_EXCEPTION(other.open(chain_id), chain_id_type_exception,
+                           fc_exception_message_starts_with("chain ID in state "));
 }
 
-namespace{
-   struct scoped_temp_path {
-      boost::filesystem::path path;
-      scoped_temp_path() {
-         path = boost::filesystem::unique_path();
-         if (boost::unit_test::framework::master_test_suite().argc >= 2) {
-            path += boost::unit_test::framework::master_test_suite().argv[1];
-         }
-      }
-      ~scoped_temp_path() {
-         boost::filesystem::remove_all(path);
-      }
-   };
-}
-
-enum class buf_len_type { small, medium, large };
-
-void trim_blocklog_front(uint32_t truncate_at_block, buf_len_type len_type) {
+BOOST_AUTO_TEST_CASE(test_restart_from_block_log) {
    tester chain;
-   chain.produce_blocks(30);
+
+   chain.create_account("replay1"_n);
+   chain.produce_blocks(1);
+   chain.create_account("replay2"_n);
+   chain.produce_blocks(1);
+   chain.create_account("replay3"_n);
+   chain.produce_blocks(1); // replay3 will be in fork_db.dat
+
+   BOOST_REQUIRE_NO_THROW(chain.control->get_account("replay1"_n));
+   BOOST_REQUIRE_NO_THROW(chain.control->get_account("replay2"_n));
+   BOOST_REQUIRE_NO_THROW(chain.control->get_account("replay3"_n));
+
    chain.close();
 
-   namespace bfs = boost::filesystem;
+   controller::config copied_config = chain.get_config();
+   auto               genesis       = chain::block_log::extract_genesis_state(chain.get_config().blocks_dir);
+   BOOST_REQUIRE(genesis);
 
-   auto blocks_dir     = chain.get_config().blocks_dir;
-   auto old_index_size = fc::file_size(blocks_dir / "blocks.index");
+   // remove the state files to make sure we are starting from block log & fork_db.dat
+   remove_existing_states(copied_config);
 
-   scoped_temp_path temp1, temp2;
-   boost::filesystem::create_directory(temp1.path);
-   bfs::copy(blocks_dir / "blocks.log", temp1.path / "blocks.log");
-   bfs::copy(blocks_dir / "blocks.index", temp1.path / "blocks.index");
+   tester from_block_log_chain(copied_config, *genesis);
 
-   trim_data old_log(temp1.path);
-   uint64_t blk_size = old_log.block_pos(30) - old_log.block_pos(29);
-   uint64_t log_size = old_log.block_pos(30) + blk_size;
-
-   switch (len_type){
-      case buf_len_type::small:
-         block_log_set_buff_len( blk_size + (sizeof(uint64_t) - 1));
-         break;
-      case buf_len_type::medium:
-         block_log_set_buff_len( log_size / 3);
-         break;
-      case buf_len_type::large:
-         block_log_set_buff_len(log_size);
-         break;
-      default:
-         return;
-   }
-
-   BOOST_CHECK( block_log::trim_blocklog_front(temp1.path, temp2.path, truncate_at_block) == true);
-   trim_data new_log(temp1.path);
-   BOOST_CHECK(new_log.first_block == truncate_at_block);
-   BOOST_CHECK(new_log.last_block == old_log.last_block);
-   BOOST_CHECK(old_log.version == new_log.version);
-
-   int num_blocks_trimmed = truncate_at_block - 1;
-   BOOST_CHECK(fc::file_size(temp1.path / "blocks.index") == old_index_size - sizeof(uint64_t) * num_blocks_trimmed);
+   BOOST_REQUIRE_NO_THROW(from_block_log_chain.control->get_account("replay1"_n));
+   BOOST_REQUIRE_NO_THROW(from_block_log_chain.control->get_account("replay2"_n));
+   BOOST_REQUIRE_NO_THROW(from_block_log_chain.control->get_account("replay3"_n));
 }
 
-BOOST_AUTO_TEST_CASE(test_trim_blocklog_front) {
-   trim_blocklog_front(5, buf_len_type::small);
-   trim_blocklog_front(6, buf_len_type::small);
-   trim_blocklog_front(10, buf_len_type::medium);
-   trim_blocklog_front(11, buf_len_type::medium);
-   trim_blocklog_front(15, buf_len_type::large);
-   trim_blocklog_front(16, buf_len_type::large);
+BOOST_AUTO_TEST_CASE(test_light_validation_restart_from_block_log) {
+   tester chain(setup_policy::full);
+
+   chain.create_account("testapi"_n);
+   chain.create_account("dummy"_n);
+   chain.produce_block();
+   chain.set_code("testapi"_n, test_contracts::test_api_wasm());
+   chain.produce_block();
+
+   cf_action          cfa;
+   signed_transaction trx;
+   action             act({}, cfa);
+   trx.context_free_actions.push_back(act);
+   trx.context_free_data.emplace_back(fc::raw::pack<uint32_t>(100)); // verify payload matches context free data
+   trx.context_free_data.emplace_back(fc::raw::pack<uint32_t>(200));
+   // add a normal action along with cfa
+   dummy_action da = {DUMMY_ACTION_DEFAULT_A, DUMMY_ACTION_DEFAULT_B, DUMMY_ACTION_DEFAULT_C};
+   action       act1(vector<permission_level>{{"testapi"_n, config::active_name}}, da);
+   trx.actions.push_back(act1);
+   chain.set_transaction_headers(trx);
+   // run normal passing case
+   auto sigs  = trx.sign(chain.get_private_key("testapi"_n, "active"), chain.control->get_chain_id());
+   auto trace = chain.push_transaction(trx);
+   chain.produce_block();
+
+   BOOST_REQUIRE(trace->receipt);
+   BOOST_CHECK_EQUAL(trace->receipt->status, transaction_receipt::executed);
+   BOOST_CHECK_EQUAL(2, trace->action_traces.size());
+
+   BOOST_CHECK(trace->action_traces.at(0).context_free); // cfa
+   BOOST_CHECK_EQUAL("test\n", trace->action_traces.at(0).console); // cfa executed
+
+   BOOST_CHECK(!trace->action_traces.at(1).context_free); // non-cfa
+   BOOST_CHECK_EQUAL("", trace->action_traces.at(1).console);
+
+   chain.close();
+
+   controller::config copied_config = chain.get_config();
+   auto               genesis       = chain::block_log::extract_genesis_state(chain.get_config().blocks_dir);
+   BOOST_REQUIRE(genesis);
+
+   // remove the state files to make sure we are starting from block log
+   remove_existing_states(copied_config);
+   transaction_trace_ptr other_trace;
+
+   replay_tester from_block_log_chain(copied_config, *genesis,
+                                       [&](std::tuple<const transaction_trace_ptr&, const packed_transaction_ptr&> x) {
+                                          auto& t = std::get<0>(x);
+                                          if (t && t->id == trace->id) {
+                                             other_trace = t;
+                                          }
+                                       });
+
+
+   BOOST_REQUIRE(other_trace);
+   BOOST_REQUIRE(other_trace->receipt);
+   BOOST_CHECK_EQUAL(other_trace->receipt->status, transaction_receipt::executed);
+   BOOST_CHECK(*trace->receipt == *other_trace->receipt);
+   BOOST_CHECK_EQUAL(2, other_trace->action_traces.size());
+
+   BOOST_CHECK(other_trace->action_traces.at(0).context_free); // cfa
+   BOOST_CHECK_EQUAL("", other_trace->action_traces.at(0).console); // cfa not executed for replay
+   BOOST_CHECK_EQUAL(trace->action_traces.at(0).receipt->global_sequence, other_trace->action_traces.at(0).receipt->global_sequence);
+   BOOST_CHECK_EQUAL(trace->action_traces.at(0).receipt->digest(), other_trace->action_traces.at(0).receipt->digest());
+
+   BOOST_CHECK(!other_trace->action_traces.at(1).context_free); // non-cfa
+   BOOST_CHECK_EQUAL("", other_trace->action_traces.at(1).console);
+   BOOST_CHECK_EQUAL(trace->action_traces.at(1).receipt->global_sequence, other_trace->action_traces.at(1).receipt->global_sequence);
+   BOOST_CHECK_EQUAL(trace->action_traces.at(1).receipt->digest(), other_trace->action_traces.at(1).receipt->digest());
 }
 
 BOOST_AUTO_TEST_SUITE_END()

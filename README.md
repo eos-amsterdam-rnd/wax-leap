@@ -50,12 +50,12 @@ Requirements to build:
 - LLVM 7 - 11 - for Linux only
   - newer versions do not work
 - openssl 1.1+
-- libcurl
 - curl
-- libusb
+- libcurl 7.40.0+
 - git
 - GMP
 - Python 3
+- python3-numpy
 - zlib
 
 ### Step 1 - Clone
@@ -111,12 +111,14 @@ Make sure you are in the root of the `leap` repo, then run the `install_depts.sh
 sudo scripts/install_deps.sh
 ```
 
-Next, run the pinned build script. You have to give it three arguments, in the following order:
-  - A temporary folder, for all dependencies that need to be built from source.
-  - A build folder, where the binaries you need to install will be built to.
-  - The number of jobs or CPU cores/threads to use (note the [jobs flag](#step-3---build) warning above).
+Next, run the pinned build script. You have to give it three arguments in the following order:
+1. A temporary folder, for all dependencies that need to be built from source.
+1. A build folder, where the binaries you need to install will be built to.
+1. The number of jobs or CPU cores/threads to use (note the [jobs flag](#step-3---build) warning above).
 
-The following command runs the `pinned_build.sh` script, specifies a `deps` and `build` folder in the root of the Leap repo for the first two arguments, then builds the packages using all of your computer's CPU threads (Note: you don't need `sudo` for this command):
+> 🔒 You do not need to run this script with `sudo` or as root.
+
+For example, the following command runs the `pinned_build.sh` script, specifies a `deps` and `build` folder in the root of the Leap repo for the first two arguments, then builds the packages using all of your computer's CPU threads:
 ```bash
 scripts/pinned_build.sh deps build "$(nproc)"
 ```
@@ -139,16 +141,15 @@ sudo apt-get install -y \
         libcurl4-openssl-dev \
         libgmp-dev \
         libssl-dev \
-        libusb-1.0-0-dev \
         llvm-11-dev \
-        pkg-config
+        python3-numpy
 ```
 To build, make sure you are in the root of the `leap` repo, then run the following command:
 ```bash
 mkdir -p build
 cd build
 cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=/usr/lib/llvm-11 ..
-make -j $(nproc) package
+make -j "$(nproc)" package
 ```
 </details>
 
@@ -166,11 +167,13 @@ sudo apt-get install -y \
         libcurl4-openssl-dev \
         libgmp-dev \
         libssl-dev \
-        libusb-1.0-0-dev \
         llvm-7-dev \
-        pkg-config \
         python3 \
+        python3-numpy \
+        python3-pip \
         zlib1g-dev
+
+python3 -m pip install dataclasses
 ```
 You need to build Boost from source on this distribution:
 ```bash

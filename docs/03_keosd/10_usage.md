@@ -44,16 +44,6 @@ Config Options for eosio::http_plugin:
   --http-server-address arg             The local IP and port to listen for
                                         incoming http connections; leave blank
                                         to disable.
-  --https-server-address arg            The local IP and port to listen for
-                                        incoming https connections; leave blank
-                                        to disable.
-  --https-certificate-chain-file arg    Filename with the certificate chain to
-                                        present on https connections. PEM
-                                        format. Required for https.
-  --https-private-key-file arg          Filename with https private key in PEM
-                                        format. Required for https
-  --https-ecdh-curve arg (=secp384r1)   Configure https ECDH curve to use:
-                                        secp384r1 or prime256v1
   --access-control-allow-origin arg     Specify the Access-Control-Allow-Origin
                                         to be returned on each request.
   --access-control-allow-headers arg    Specify the Access-Control-Allow-Header
@@ -91,11 +81,6 @@ Config Options for eosio::wallet_plugin:
                                         number of seconds of inactivity.
                                         Activity is defined as any wallet
                                         command e.g. list-wallets.
-  --yubihsm-url URL                     Override default URL of
-                                        http://localhost:12345 for connecting
-                                        to yubihsm-connector
-  --yubihsm-authkey key_num             Enables YubiHSM support using given
-                                        Authkey
 
 Application Config Options:
   --plugin arg                          Plugin(s) to enable, may be specified

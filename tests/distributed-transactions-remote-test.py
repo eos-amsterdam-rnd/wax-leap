@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
 
-from testUtils import Utils
-from Cluster import Cluster
-from TestHelper import TestHelper
-
 import subprocess
 import tempfile
 import os
+
+from TestHarness import Cluster, TestHelper, Utils
 
 ###############################################################
 # distributed-transactions-remote-test
@@ -19,7 +17,7 @@ import os
 Print=Utils.Print
 errorExit=Utils.errorExit
 
-args = TestHelper.parse_args({"-p","--dump-error-details","-v","--leave-running","--clean-run"})
+args = TestHelper.parse_args({"-p","--dump-error-details","-v","--leave-running","--clean-run","--unshared"})
 pnodes=args.p
 debug=args.v
 dontKill=args.leave_running
@@ -49,7 +47,7 @@ clusterMapJsonTemplate="""{
 }
 """
 
-cluster=Cluster(walletd=True)
+cluster=Cluster(walletd=True,unshared=args.unshared)
 
 (fd, nodesFile) = tempfile.mkstemp()
 try:

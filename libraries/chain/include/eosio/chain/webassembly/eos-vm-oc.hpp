@@ -30,15 +30,19 @@ class eosvmoc_runtime : public eosio::chain::wasm_runtime_interface {
    public:
       eosvmoc_runtime(const boost::filesystem::path data_dir, const eosvmoc::config& eosvmoc_config, const chainbase::database& db);
       ~eosvmoc_runtime();
-      std::unique_ptr<wasm_instantiated_module_interface> instantiate_module(const char* code_bytes, size_t code_size, std::vector<uint8_t> initial_memory,
+      std::unique_ptr<wasm_instantiated_module_interface> instantiate_module(const char* code_bytes, size_t code_size,
                                                                              const digest_type& code_hash, const uint8_t& vm_type, const uint8_t& vm_version) override;
 
-      void immediately_exit_currently_running_module() override;
+      void init_thread_local_data() override;
 
       friend eosvmoc_instantiated_module;
       eosvmoc::code_cache_sync cc;
       eosvmoc::executor exec;
       eosvmoc::memory mem;
+
+      // Defined in eos-vm-oc.cpp. Used for non-main thread in multi-threaded execution
+      thread_local static std::unique_ptr<eosvmoc::executor> exec_thread_local;
+      thread_local static eosvmoc::memory mem_thread_local;
 };
 
 /**
@@ -349,7 +353,13 @@ auto fn(A... a) {
                       : "cc");
       }
       using native_args = vm::flatten_parameters_t<AUTO_PARAM_WORKAROUND(F)>;
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-value"
+      // If a is unpopulated, this reports "statement has no effect [-Werror=unused-value]"
       eosio::vm::native_value stack[] = { a... };
+#pragma GCC diagnostic pop
+
       constexpr int cb_ctx_ptr_offset = OFFSET_OF_CONTROL_BLOCK_MEMBER(ctx);
       apply_context* ctx;
       asm("mov %%gs:%c[applyContextOffset], %[cPtr]\n"
@@ -385,7 +395,7 @@ void register_eosvm_oc(Name n) {
    if(n == BOOST_HANA_STRING("env.eosio_exit")) return;
    constexpr auto fn = create_function<F, Preconditions, injected>();
    constexpr auto index = find_intrinsic_index(n.c_str());
-   intrinsic the_intrinsic(
+   [[maybe_unused]] intrinsic the_intrinsic(
       n.c_str(),
       wasm_function_type_provider<std::remove_pointer_t<decltype(fn)>>::type(),
       reinterpret_cast<void*>(fn),

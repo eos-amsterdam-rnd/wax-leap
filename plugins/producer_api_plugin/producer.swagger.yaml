@@ -9,7 +9,7 @@ info:
   contact:
     url: https://antelope.io
 tags:
-  - name: Protocol Version 3.1
+  - name: Protocol Version 4.0
     description: The release tag for Leap binaries is also the protocol version
 servers:
   - url: "{protocol}://{host}:{port}/v1"
@@ -37,14 +37,13 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/OK'
+                $ref: "#/components/schemas/OK"
         "400":
           description: client error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-
+                $ref: "#/components/schemas/Error"
   /producer/resume:
     post:
       summary: resume
@@ -56,14 +55,13 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/OK'
+                $ref: "#/components/schemas/OK"
         "400":
           description: client error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-
+                $ref: "#/components/schemas/Error"
   /producer/paused:
     post:
       summary: paused
@@ -73,16 +71,17 @@ paths:
         "201":
           description: OK
           content:
-            application/json:
+            text/plain:
               schema:
-                $ref: '#/components/schemas/OK_PAUSED'
+                description: true or false
+                type: string
+                example: false
         "400":
           description: client error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-
+                $ref: "#/components/schemas/Error"
   /producer/get_runtime_options:
     post:
       summary: get_runtime_options
@@ -94,14 +93,13 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Runtime_Options'
+                $ref: "#/components/schemas/Runtime_Options"
         "400":
           description: client error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-
+                $ref: "#/components/schemas/Error"
   /producer/update_runtime_options:
     post:
       summary: update_runtime_options
@@ -111,21 +109,20 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Runtime_Options'
+              $ref: "#/components/schemas/Runtime_Options"
       responses:
         "201":
           description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/OK'
+                $ref: "#/components/schemas/OK"
         "400":
           description: client error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-
+                $ref: "#/components/schemas/Error"
   /producer/get_greylist:
     post:
       summary: get_greylist
@@ -149,8 +146,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-
+                $ref: "#/components/schemas/Error"
   /producer/add_greylist_accounts:
     post:
       summary: add_greylist_accounts
@@ -162,25 +158,24 @@ paths:
             schema:
               type: object
               properties:
-                  accounts:
-                    type: array
-                    description: List of account names to add
-                    items:
-                      $ref: "https://docs.eosnetwork.com/openapi/v2.0/Name.yaml"
+                accounts:
+                  type: array
+                  description: List of account names to add
+                  items:
+                    $ref: "https://docs.eosnetwork.com/openapi/v2.0/Name.yaml"
       responses:
         "201":
           description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/OK'
+                $ref: "#/components/schemas/OK"
         "400":
           description: client error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-
+                $ref: "#/components/schemas/Error"
   /producer/remove_greylist_accounts:
     post:
       summary: remove_greylist_accounts
@@ -203,14 +198,13 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/OK'
+                $ref: "#/components/schemas/OK"
         "400":
           description: client error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-
+                $ref: "#/components/schemas/Error"
   /producer/get_whitelist_blacklist:
     post:
       summary: get_whitelist_blacklist
@@ -258,8 +252,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-
+                $ref: "#/components/schemas/Error"
   /producer/set_whitelist_blacklist:
     post:
       summary: set_whitelist_blacklist
@@ -306,14 +299,13 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/OK'
+                $ref: "#/components/schemas/OK"
         "400":
           description: client error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-
+                $ref: "#/components/schemas/Error"
   /producer/create_snapshot:
     post:
       summary: create_snapshot
@@ -350,8 +342,205 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: "#/components/schemas/Error"
+  /producer/schedule_snapshot:
+    post:
+      summary: schedule_snapshot
+      description: Submits a request to automatically generate snapshots according to a schedule specified with given parameters. If request body is empty, schedules immediate snapshot generation. Returns error when unable to accept schedule.
+      operationId: schedule_snapshot
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                block_spacing:
+                  type: integer
+                  description: Generate snapshot every block_spacing blocks
+                start_block_num:
+                  type: integer
+                  description: Block number at which schedule starts
+                  example: 5102
+                end_block_num:
+                  type: integer
+                  description: Block number at which schedule ends
+                  example: 15102
+                snapshot_description:
+                  type: string
+                  description: Description of the snapshot
+                  example: Daily snapshot
 
+      responses:
+        "201":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                    - snapshot_request_id
+                    - block_spacing
+                    - start_block_num
+                    - end_block_num
+                    - snapshot_description
+                properties:
+                  snapshot_request_id:
+                    type: integer
+                    description: Unique id identifying current snapshot request
+                  block_spacing:
+                    type: integer
+                    description: Generate snapshot every block_spacing blocks
+                  start_block_num:
+                    type: integer
+                    description: Block number at which schedule starts
+                    example: 5102
+                  end_block_num:
+                    type: integer
+                    description: Block number at which schedule ends
+                    example: 15102
+                  snapshot_description:
+                    type: string
+                    description: Description of the snapshot
+                    example: Daily snapshot
+        "400":
+          description: client error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /producer/get_snapshot_requests:
+    post:
+      summary: get_snapshot_requests
+      description: Returns a list of scheduled snapshots.
+      operationId: get_snapshot_requests
+      responses:
+        "201":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  snapshot_requests:
+                    type: array
+                    description: An array of scheduled snapshot requests
+                    items:
+                      type: object
+                      required:
+                          - snapshot_request_id
+                          - block_spacing
+                          - start_block_num
+                          - end_block_num
+                          - snapshot_description
+                          - pending_snapshots
+                      properties:
+                        snapshot_request_id:
+                          type: integer
+                          description: Unique id identifying current snapshot request
+                        block_spacing:
+                          type: integer
+                          description: Generate snapshot every block_spacing blocks
+                        start_block_num:
+                          type: integer
+                          description: Block number at which schedule starts
+                          example: 5102
+                        end_block_num:
+                          type: integer
+                          description: Block number at which schedule ends
+                          example: 15102
+                        snapshot_description:
+                          type: string
+                          description: Description of the snapshot
+                          example: Daily snapshot
+                        pending_snapshots:
+                          type: array
+                          description: List of pending snapshots
+                          items:
+                            type: object
+                            required:
+                                - head_block_id
+                                - head_block_num
+                                - head_block_time
+                                - version
+                                - snapshot_name
+                            properties:
+                              head_block_id:
+                                $ref: "https://docs.eosnetwork.com/openapi/v2.0/Sha256.yaml"
+                              head_block_num:
+                                type: integer
+                                description: Highest block number on the chain
+                                example: 5102
+                              head_block_time:
+                                type: string
+                                description: Highest block unix timestamp
+                                example: 2020-11-16T00:00:00.000
+                              version:
+                                type: integer
+                                description: version number
+                                example: 6
+                              snapshot_name:
+                                type: string
+                                description: The path and file name of the snapshot
+                                example: /home/me/nodes/node-name/snapshots/snapshot-0000999f99999f9f999f99f99ff9999f999f9fff99ff99ffff9f9f9fff9f9999.bin
+        "400":
+          description: client error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /producer/unschedule_snapshot:
+    post:
+      summary: unschedule_snapshot
+      description: Removes snapshot request identified by id. Returns error if referenced snapshot request does not exist.
+      operationId: unschedule_snapshot
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                snapshot_request_id:
+                  type: integer
+                  description: snapshot id
+      responses:
+        "201":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - snapshot_request_id
+                  - block_spacing
+                  - start_block_num
+                  - end_block_num
+                  - snapshot_description
+                properties:
+                  snapshot_request_id:
+                    type: integer
+                    description: Unique id identifying current snapshot request
+                  block_spacing:
+                    type: integer
+                    description: Generate snapshot every block_spacing blocks
+                  start_block_num:
+                    type: integer
+                    description: Block number at which schedule starts
+                    example: 5102
+                  end_block_num:
+                    type: integer
+                    description: Block number at which schedule ends
+                    example: 15102
+                  snapshot_description:
+                    type: string
+                    description: Description of the snapshot
+                    example: Daily snapshot
+        "400":
+          description: client error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /producer/get_integrity_hash:
     post:
       summary: get_integrity_hash
@@ -375,8 +564,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-
+                $ref: "#/components/schemas/Error"
   /producer/schedule_protocol_feature_activations:
     post:
       summary: schedule_protocol_feature_activations
@@ -399,14 +587,13 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/OK'
+                $ref: "#/components/schemas/OK"
         "400":
           description: client error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-
+                $ref: "#/components/schemas/Error"
   /producer/get_supported_protocol_features:
     post:
       summary: get_supported_protocol_features
@@ -421,9 +608,12 @@ paths:
                 exclude_disabled:
                   type: boolean
                   description: Exclude disabled protocol features
+                  example: false
+                  default: false
                 exclude_unactivatable:
                   type: boolean
                   description: Exclude unactivatable protocol features
+                  default: false
                   example: false
       responses:
         "201":
@@ -473,9 +663,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-
-
+                $ref: "#/components/schemas/Error"
   /producer/get_account_ram_corrections:
     post:
       summary: get_account_ram_corrections
@@ -496,11 +684,13 @@ paths:
                 limit:
                   type: integer
                   description: number of rows to scan
+                  default: 10
                   example: 10
                 reverse:
                   type: boolean
                   description: direction of search
                   example: false
+                  default: false
       responses:
         "201":
           description: OK
@@ -524,8 +714,87 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-
+                $ref: "#/components/schemas/Error"
+  /producer/get_unapplied_transactions:
+    post:
+      summary: get_unapplied_transactions
+      description: Get Unapplied Transactions.
+      operationId: get_unapplied_transactions
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                limit:
+                  type: integer
+                  description: limit number of transactions to return
+                  default: 100
+                  example: 100
+                lower_bound:
+                  $ref: "https://docs.eosnetwork.com/openapi/v2.0/Sha256.yaml"
+                time_limit_ms:
+                  type: integer
+                  default: 10
+                  example: 10
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  size:
+                    type: integer
+                    default: 0
+                    example: 12428
+                  incoming_size:
+                    type: integer
+                    default: 0
+                    example: 4475
+                  trxs:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        trx_id:
+                          $ref: "https://docs.eosnetwork.com/openapi/v2.0/Sha256.yaml"
+                        expiration:
+                          type: string
+                          example: "2022-09-17T16:30:16"
+                        trx_type:
+                          type: string
+                          example: "aborted"
+                        first_auth:
+                          type: string
+                          example: "jkbsg.wam"
+                        first_receiver:
+                          type: string
+                          example: "m.federation"
+                        first_action:
+                          type: string
+                          example: "mine"
+                        total_actions:
+                          type: integer
+                          default: 0
+                          example: 1
+                        billed_cpu_time_us:
+                          type: integer
+                          default: 0
+                          example: 504
+                        size:
+                          type: integer
+                          default: 0
+                          example: 934
+                  more:
+                    $ref: "https://docs.eosnetwork.com/openapi/v2.0/Sha256.yaml"
+        "400":
+          description: client error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 components:
   securitySchemes: {}
   schemas:
@@ -585,13 +854,6 @@ components:
           type: string
           description: status
           example: ok
-    OK_PAUSED:
-      type: object
-      properties:
-        json:
-          type: boolean
-          description: true/false indicating paused state
-          example: true
     Runtime_Options:
       type: object
       properties:

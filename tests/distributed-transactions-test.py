@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
 
-from testUtils import Utils
-from Cluster import Cluster
-from WalletMgr import WalletMgr
-from TestHelper import TestHelper
-
 import random
+
+from TestHarness import Cluster, TestHelper, Utils, WalletMgr
+from TestHarness.TestHelper import AppArgs
 
 ###############################################################
 # distributed-transactions-test
@@ -22,8 +20,10 @@ import random
 Print=Utils.Print
 errorExit=Utils.errorExit
 
-args=TestHelper.parse_args({"-p","-n","-d","-s","--nodes-file","--seed"
-                           ,"--dump-error-details","-v","--leave-running","--clean-run","--keep-logs"})
+appArgs = AppArgs()
+extraArgs = appArgs.add_bool(flag="--speculative", help="Run nodes in read-mode=speculative")
+args=TestHelper.parse_args({"-p","-n","-d","-s","--nodes-file","--seed", "--speculative"
+                           ,"--dump-error-details","-v","--leave-running","--clean-run","--keep-logs","--unshared"}, applicationSpecificArgs=appArgs)
 
 pnodes=args.p
 topo=args.s
@@ -37,6 +37,7 @@ dontKill=args.leave_running
 dumpErrorDetails=args.dump_error_details
 killAll=args.clean_run
 keepLogs=args.keep_logs
+speculative=args.speculative
 
 killWallet=not dontKill
 killEosInstances=not dontKill
@@ -47,7 +48,7 @@ Utils.Debug=debug
 testSuccessful=False
 
 random.seed(seed) # Use a fixed seed for repeatability.
-cluster=Cluster(walletd=True)
+cluster=Cluster(walletd=True,unshared=args.unshared)
 walletMgr=WalletMgr(True)
 
 try:
@@ -74,8 +75,11 @@ try:
                (pnodes, total_nodes-pnodes, topo, delay))
 
         Print("Stand up cluster")
-        traceNodeosArgs=" --plugin eosio::trace_api_plugin --trace-no-abis "
-        if cluster.launch(pnodes=pnodes, totalNodes=total_nodes, topo=topo, delay=delay, extraNodeosArgs=traceNodeosArgs) is False:
+        extraNodeosArgs = ""
+        if speculative:
+           extraNodeosArgs = " --read-mode speculative "
+
+        if cluster.launch(pnodes=pnodes, totalNodes=total_nodes, topo=topo, delay=delay, extraNodeosArgs=extraNodeosArgs) is False:
             errorExit("Failed to stand up eos cluster.")
 
         Print ("Wait for Cluster stabilization")

@@ -361,6 +361,10 @@ namespace eosio { namespace chain {
                                     3080007, "Transaction exceeded the current greylisted account network usage limit" )
       FC_DECLARE_DERIVED_EXCEPTION( greylist_cpu_usage_exceeded, resource_exhausted_exception,
                                     3080008, "Transaction exceeded the current greylisted account CPU usage limit" )
+      FC_DECLARE_DERIVED_EXCEPTION( ro_trx_vm_oc_compile_temporary_failure, resource_exhausted_exception,
+                                    3080009, "Read-only transaction eos-vm-oc compile temporary failure" )
+      FC_DECLARE_DERIVED_EXCEPTION( ro_trx_vm_oc_compile_permanent_failure, resource_exhausted_exception,
+                                    3080010, "Read-only transaction eos-vm-oc compile permanent failure" )
 
       FC_DECLARE_DERIVED_EXCEPTION( leeway_deadline_exception, deadline_exception,
                                     3081001, "Transaction reached the deadline set due to leeway on account CPU limits" )
@@ -573,6 +577,12 @@ namespace eosio { namespace chain {
                                     3170011, "The signer returned no valid block signatures" )
       FC_DECLARE_DERIVED_EXCEPTION( unsupported_multiple_block_signatures,  producer_exception,
                                     3170012, "The signer returned multiple signatures but that is not supported" )
+      FC_DECLARE_DERIVED_EXCEPTION( duplicate_snapshot_request,  producer_exception,
+                                    3170013, "Snapshot has been already scheduled with specified parameters" )
+      FC_DECLARE_DERIVED_EXCEPTION( snapshot_request_not_found,  producer_exception,
+                                    3170014, "Snapshot request not found" )
+      FC_DECLARE_DERIVED_EXCEPTION( invalid_snapshot_request,  producer_exception,
+                                    3170015, "Invalid snapshot request" )
 
    FC_DECLARE_DERIVED_EXCEPTION( reversible_blocks_exception,           chain_exception,
                                  3180000, "Reversible Blocks exception" )

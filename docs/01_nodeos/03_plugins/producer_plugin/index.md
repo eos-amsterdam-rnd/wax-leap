@@ -39,10 +39,6 @@ Config Options for eosio::producer_plugin:
   -p [ --producer-name ] arg            ID of producer controlled by this node
                                         (e.g. inita; may specify multiple
                                         times)
-  --private-key arg                     (DEPRECATED - Use signature-provider
-                                        instead) Tuple of [public key, WIF
-                                        private key] (may specify multiple
-                                        times)
   --signature-provider arg (=EOS6MRyAjQq8ud7hVNYcfnVPJqcVpscN5So8BhtHuGYqET5GDW5CV=KEY:5KQwrPbwdL6PhXujxW37FSSQZ1JiwsST4cqQzDeyXtP79zkvFD3)
                                         Key=Value pairs in the form
                                         <public-key>=<provider-spec>
@@ -55,7 +51,7 @@ Config Options for eosio::producer_plugin:
                                                            form <provider-type>
                                                            :<data>
 
-                                           <provider-type> is KEY, or KEOSD
+                                           <provider-type> is KEY, KEOSD, or SE
 
                                            KEY:<data>      is a string form of
                                                            a valid EOS
@@ -68,10 +64,6 @@ Config Options for eosio::producer_plugin:
                                                            and the approptiate
                                                            wallet(s) are
                                                            unlocked
-  --keosd-provider-timeout arg (=5)     Limits the maximum time (in
-                                        milliseconds) that is allowed for
-                                        sending blocks to a keosd provider for
-                                        signing
   --greylist-account arg                account that can not access to extended
                                         CPU/NET virtual resources
   --greylist-limit arg (=1000)          Limit (between 1 and 1000) on the
@@ -106,9 +98,10 @@ Config Options for eosio::producer_plugin:
   --max-scheduled-transaction-time-per-block-ms arg (=100)
                                         Maximum wall-clock time, in
                                         milliseconds, spent retiring scheduled
-                                        transactions in any block before
-                                        returning to normal transaction
-                                        processing.
+                                        transactions (and incoming transactions
+                                        according to incoming-defer-ratio) in
+                                        any block before returning to normal
+                                        transaction processing.
   --subjective-cpu-leeway-us arg (=31000)
                                         Time in microseconds allowed for a
                                         transaction that starts with
@@ -129,8 +122,6 @@ Config Options for eosio::producer_plugin:
                                         transaction queue. Exceeding this value
                                         will subjectively drop transaction with
                                         resource exhaustion.
-  --disable-api-persisted-trx           Disable the re-apply of API
-                                        transactions.
   --disable-subjective-billing arg (=1) Disable subjective CPU billing for
                                         API/P2P transactions
   --disable-subjective-account-billing arg

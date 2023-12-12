@@ -29,20 +29,10 @@ Config Options for eosio::http_plugin:
                                         The local IP and port to listen for
                                         incoming http connections; set blank to
                                         disable.
-  --https-server-address arg            The local IP and port to listen for
-                                        incoming https connections; leave blank
-                                        to disable.
-  --https-certificate-chain-file arg    Filename with the certificate chain to
-                                        present on https connections. PEM
-                                        format. Required for https.
-  --https-private-key-file arg          Filename with https private key in PEM
-                                        format. Required for https
-  --https-ecdh-curve arg (=secp384r1)   Configure https ECDH curve to use:
-                                        secp384r1 or prime256v1
   --access-control-allow-origin arg     Specify the Access-Control-Allow-Origin
-                                        to be returned on each request.
+                                        to be returned on each request
   --access-control-allow-headers arg    Specify the Access-Control-Allow-Header
-                                        s to be returned on each request.
+                                        s to be returned on each request
   --access-control-max-age arg          Specify the Access-Control-Max-Age to
                                         be returned on each request.
   --access-control-allow-credentials    Specify if Access-Control-Allow-Credent
@@ -55,7 +45,13 @@ Config Options for eosio::http_plugin:
                                         should use for processing http
                                         requests. -1 for unlimited. 429 error
                                         response when exceeded.
-  --http-max-response-time-ms arg (=30) Maximum time for processing a request.
+  --http-max-in-flight-requests arg (=-1)
+                                        Maximum number of requests http_plugin
+                                        should use for processing http
+                                        requests. 429 error response when
+                                        exceeded.
+  --http-max-response-time-ms arg (=30) Maximum time for processing a request,
+                                        -1 for unlimited
   --verbose-http-errors                 Append the error log to HTTP responses
   --http-validate-host arg (=1)         If set to false, then any incoming
                                         "Host" header is considered valid
@@ -66,6 +62,9 @@ Config Options for eosio::http_plugin:
                                         by default.
   --http-threads arg (=2)               Number of worker threads in http thread
                                         pool
+  --http-keep-alive arg (=1)            If set to false, do not keep HTTP
+                                        connections alive, even if client
+                                        requests.
 ```
 
 ## Dependencies

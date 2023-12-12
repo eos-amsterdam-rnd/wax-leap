@@ -268,22 +268,24 @@ namespace eosio { namespace testing {
       open( make_protocol_feature_set(), expected_chain_id );
    }
 
-   template <typename Lambda>
-   void base_tester::open( protocol_feature_set&& pfs, std::optional<chain_id_type> expected_chain_id, Lambda lambda ) {
+   void base_tester::open( protocol_feature_set&& pfs, std::optional<chain_id_type> expected_chain_id, const std::function<void()>& lambda ) {
       if( !expected_chain_id ) {
          expected_chain_id = controller::extract_chain_id_from_db( cfg.state_dir );
          if( !expected_chain_id ) {
-            if( fc::is_regular_file( cfg.blocks_dir / "blocks.log" ) ) {
-               expected_chain_id = block_log::extract_chain_id( cfg.blocks_dir );
-            } else {
-               expected_chain_id = genesis_state().compute_chain_id();
+            fc::path retained_dir;
+            auto partitioned_config = std::get_if<partitioned_blocklog_config>(&cfg.blog);
+            if (partitioned_config) {
+               retained_dir = partitioned_config->retained_dir;
+               if (retained_dir.is_relative())
+                  retained_dir = cfg.blocks_dir/retained_dir;
             }
+            expected_chain_id = block_log::extract_chain_id( cfg.blocks_dir, retained_dir );
          }
       }
 
       control.reset( new controller(cfg, std::move(pfs), *expected_chain_id) );
       control->add_indices();
-      lambda();
+      if (lambda) lambda();
       chain_transactions.clear();
       control->accepted_block.connect([this]( const block_state_ptr& block_state ){
         FC_ASSERT( block_state->block );
@@ -322,7 +324,8 @@ namespace eosio { namespace testing {
    void base_tester::push_block(signed_block_ptr b) {
       auto bsf = control->create_block_state_future(b->calculate_id(), b);
       unapplied_transactions.add_aborted( control->abort_block() );
-      control->push_block( bsf.get(), [this]( const branch_type& forked_branch ) {
+      controller::block_report br;
+      control->push_block( br, bsf.get(), [this]( const branch_type& forked_branch ) {
          unapplied_transactions.add_forked( forked_branch );
       }, [this]( const transaction_id_type& id ) {
          return unapplied_transactions.get_trx( id );
@@ -406,7 +409,8 @@ namespace eosio { namespace testing {
          preactivated_protocol_features.end()
       );
 
-      control->start_block( block_time, head_block_number - last_produced_block_num, feature_to_be_activated );
+      control->start_block( block_time, head_block_number - last_produced_block_num, feature_to_be_activated,
+                            controller::block_status::incomplete );
 
       // Clear the list, if start block finishes successfuly, the protocol features should be assumed to be activated
       protocol_features_to_be_activated_wo_preactivation.clear();
@@ -428,7 +432,8 @@ namespace eosio { namespace testing {
          }
       });
 
-      control->finalize_block( [&]( digest_type d ) {
+      controller::block_report br;
+      control->finalize_block( br, [&]( digest_type d ) {
          std::vector<signature_type> result;
          result.reserve(signing_keys.size());
          for (const auto& k: signing_keys)
@@ -580,7 +585,8 @@ namespace eosio { namespace testing {
    transaction_trace_ptr base_tester::push_transaction( signed_transaction& trx,
                                                         fc::time_point deadline,
                                                         uint32_t billed_cpu_time_us,
-                                                        bool no_throw
+                                                        bool no_throw,
+                                                        transaction_metadata::trx_type trx_type
                                                       )
    { try {
       if( !control->is_building_block() )
@@ -595,7 +601,7 @@ namespace eosio { namespace testing {
             fc::microseconds::maximum() :
             fc::microseconds( deadline - fc::time_point::now() );
       auto ptrx = std::make_shared<packed_transaction>( trx, c );
-      auto fut = transaction_metadata::start_recover_keys( ptrx, control->get_thread_pool(), control->get_chain_id(), time_limit, transaction_metadata::trx_type::input );
+      auto fut = transaction_metadata::start_recover_keys( ptrx, control->get_thread_pool(), control->get_chain_id(), time_limit, trx_type );
       auto r = control->push_transaction( fut.get(), deadline, fc::microseconds::maximum(), billed_cpu_time_us, billed_cpu_time_us > 0, 0 );
       if (no_throw) return r;
       if( r->except_ptr ) std::rethrow_exception( r->except_ptr );
@@ -680,7 +686,7 @@ namespace eosio { namespace testing {
                                    const variant_object& data )const { try {
       const auto& acnt = control->get_account(code);
       auto abi = acnt.get_abi();
-      chain::abi_serializer abis(abi, abi_serializer::create_yield_function( abi_serializer_max_time ));
+      chain::abi_serializer abis(std::move(abi), abi_serializer::create_yield_function( abi_serializer_max_time ));
 
       string action_type_name = abis.get_action_type(acttype);
       FC_ASSERT( action_type_name != string(), "unknown action type ${a}", ("a",acttype) );
@@ -948,6 +954,13 @@ namespace eosio { namespace testing {
       push_transaction( trx );
    }
 
+   bool base_tester::is_code_cached( eosio::chain::account_name name ) const {
+      const auto& db  = control->db();
+      const account_metadata_object* receiver_account = &db.template get<account_metadata_object,by_name>( name );
+      if ( receiver_account->code_hash == digest_type() ) return false;
+      return control->get_wasm_interface().is_code_cached( receiver_account->code_hash, receiver_account->vm_type, receiver_account->vm_version );
+   }
+
 
    bool base_tester::chain_has_transaction( const transaction_id_type& txid ) const {
       return chain_transactions.count(txid) != 0;
@@ -1050,7 +1063,8 @@ namespace eosio { namespace testing {
             if( block ) { //&& !b.control->is_known_block(block->id()) ) {
                auto bsf = b.control->create_block_state_future( block->calculate_id(), block );
                b.control->abort_block();
-               b.control->push_block(bsf.get(), forked_branch_callback{}, trx_meta_cache_lookup{}); //, eosio::chain::validation_steps::created_block);
+               controller::block_report br;
+               b.control->push_block(br, bsf.get(), forked_branch_callback{}, trx_meta_cache_lookup{}); //, eosio::chain::validation_steps::created_block);
             }
          }
       };
@@ -1196,6 +1210,20 @@ namespace eosio { namespace testing {
       preactivate_protocol_features( preactivations );
    }
 
+   tester::tester(const std::function<void(controller&)>& control_setup, setup_policy policy, db_read_mode read_mode) {
+      auto def_conf            = default_config(tempdir);
+      def_conf.first.read_mode = read_mode;
+      cfg                      = def_conf.first;
+
+      base_tester::open(make_protocol_feature_set(), def_conf.second.compute_chain_id(),
+                        [&genesis = def_conf.second, &control = this->control, &control_setup]() {
+                           control_setup(*control);
+                           control->startup([]() {}, []() { return false; }, genesis);
+                        });
+
+      execute_setup_policy(policy);
+   }
+
    bool fc_exception_message_is::operator()( const fc::exception& ex ) {
       auto message = ex.get_log().at( 0 ).get_message();
       bool match = (message == expected);
@@ -1208,6 +1236,15 @@ namespace eosio { namespace testing {
    bool fc_exception_message_starts_with::operator()( const fc::exception& ex ) {
       auto message = ex.get_log().at( 0 ).get_message();
       bool match = boost::algorithm::starts_with( message, expected );
+      if( !match ) {
+         BOOST_TEST_MESSAGE( "LOG: expected: " << expected << ", actual: " << message );
+      }
+      return match;
+   }
+
+   bool fc_exception_message_contains::operator()( const fc::exception& ex ) {
+      auto message = ex.get_log().at( 0 ).get_message();
+      bool match = message.find(expected) != std::string::npos;
       if( !match ) {
          BOOST_TEST_MESSAGE( "LOG: expected: " << expected << ", actual: " << message );
       }

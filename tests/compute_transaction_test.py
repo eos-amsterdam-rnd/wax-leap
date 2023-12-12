@@ -1,14 +1,8 @@
 #!/usr/bin/env python3
 
-from core_symbol import CORE_SYMBOL
-from testUtils import Account
-from testUtils import Utils
-from testUtils import ReturnType
-from Cluster import Cluster
-from WalletMgr import WalletMgr
-from TestHelper import TestHelper
-
 import random
+
+from TestHarness import Account, Cluster, ReturnType, TestHelper, Utils, WalletMgr, CORE_SYMBOL
 
 ###############################################################
 # compute_transaction_tests
@@ -22,7 +16,7 @@ errorExit=Utils.errorExit
 
 args=TestHelper.parse_args({"-p","-n","-d","-s","--nodes-file","--seed"
                             ,"--dump-error-details","-v","--leave-running"
-                            ,"--clean-run","--keep-logs"})
+                            ,"--clean-run","--keep-logs","--unshared"})
 
 pnodes=args.p
 topo=args.s
@@ -46,7 +40,7 @@ Utils.Debug=debug
 testSuccessful=False
 
 random.seed(seed) # Use a fixed seed for repeatability.
-cluster=Cluster(walletd=True)
+cluster=Cluster(walletd=True,unshared=args.unshared)
 
 walletMgr=WalletMgr(True)
 EOSIO_ACCT_PRIVATE_DEFAULT_KEY = "5KQwrPbwdL6PhXujxW37FSSQZ1JiwsST4cqQzDeyXtP79zkvFD3"
@@ -73,7 +67,7 @@ try:
     Print ("producing nodes: %s, non-producing nodes: %d, topology: %s, delay between nodes launch(seconds): %d" % (pnodes, total_nodes-pnodes, topo, delay))
 
     Print("Stand up cluster")
-    extraNodeosArgs=" --http-max-response-time-ms 990000 --disable-subjective-api-billing false --plugin eosio::trace_api_plugin --trace-no-abis "
+    extraNodeosArgs=" --http-max-response-time-ms 990000 --disable-subjective-api-billing false "
     if cluster.launch(pnodes=pnodes, totalNodes=total_nodes, topo=topo, delay=delay,extraNodeosArgs=extraNodeosArgs ) is False:
        errorExit("Failed to stand up eos cluster.")
 
@@ -105,7 +99,7 @@ try:
 
     transferAmount="1000.0000 {0}".format(CORE_SYMBOL)
 
-    node.transferFunds(cluster.eosioAccount, account1, transferAmount, "fund account")
+    node.transferFunds(cluster.eosioAccount, account1, transferAmount, "fund account", waitForTransBlock=True)
     preBalances = node.getEosBalances([account1, account2])
     Print("Starting balances:")
     Print(preBalances)
@@ -118,14 +112,14 @@ try:
         "compression": "none"}]
     }
 
-    results = node.pushTransaction(trx, opts='--read-only', permissions=account1.name)
+    results = node.pushTransaction(trx, opts='--dry-run', permissions=account1.name)
     assert(results[0])
     node.waitForLibToAdvance(30)
 
     postBalances = node.getEosBalances([account1, account2])
     assert(postBalances == preBalances)
 
-    results = node.pushTransaction(trx, opts='--read-only --skip-sign')
+    results = node.pushTransaction(trx, opts='--dry-run --skip-sign')
     assert(results[0])
     node.waitForLibToAdvance(30)
 
@@ -144,7 +138,7 @@ try:
                          "compression": "none"}]
         }
 
-        results = npnode.pushTransaction(trx2, opts="--read-only")
+        results = npnode.pushTransaction(trx2, opts="--dry-run")
         assert(not results[0])
 
 # Verify that no subjective billing was charged
@@ -177,7 +171,7 @@ try:
                      "data": {"from": "account1","to": "account2","quantity": "10.0001 SYS","memo": memo},
                      "compression": "none"}]
     }
-    results = npnode.pushTransaction(trx3, opts="--read-only")
+    results = npnode.pushTransaction(trx3, opts="--dry-run")
     assert(results[0])
 
     testSuccessful = True

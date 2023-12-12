@@ -1,16 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+
 import json
 import time
 import unittest
 import os
 
-from testUtils import Utils
-from Cluster import Cluster
-from TestHelper import TestHelper
-from Node import Node
-from WalletMgr import WalletMgr
-from core_symbol import CORE_SYMBOL
+from TestHarness import Cluster, Node, TestHelper, Utils, WalletMgr, CORE_SYMBOL
+
+testSuccessful = True
 
 class TraceApiPluginTest(unittest.TestCase):
     sleep_s = 1
@@ -32,7 +30,7 @@ class TraceApiPluginTest(unittest.TestCase):
     def startEnv(self) :
         account_names = ["alice", "bob", "charlie"]
         abs_path = os.path.abspath(os.getcwd() + '/unittests/contracts/eosio.token/eosio.token.abi')
-        traceNodeosArgs = " --plugin eosio::trace_api_plugin --trace-rpc-abi eosio.token=" + abs_path
+        traceNodeosArgs = " --trace-rpc-abi eosio.token=" + abs_path
         self.cluster.launch(totalNodes=1, extraNodeosArgs=traceNodeosArgs)
         self.walletMgr.launch()
         testWalletName="testwallet"
@@ -48,9 +46,10 @@ class TraceApiPluginTest(unittest.TestCase):
         time.sleep(self.sleep_s)
 
     def get_block(self, params: str, node: Node) -> json:
-        base_cmd_str = ("curl http://%s:%s/v1/") % (TestHelper.LOCAL_HOST, node.port)
-        cmd_str = base_cmd_str + "trace_api/get_block  -X POST -d " + ("'{\"block_num\":%s}'") % params
-        return Utils.runCmdReturnJson(cmd_str)
+        resource = "trace_api"
+        command = "get_block"
+        payload = {"block_num" : params}
+        return node.processUrllibRequest(resource, command, payload)
 
     def test_TraceApi(self) :
         node = self.cluster.getNode(0)
@@ -87,9 +86,9 @@ class TraceApiPluginTest(unittest.TestCase):
 
         # verify trans via trace_api by calling get_block RPC
         blockFromTraceApi = self.get_block(blockNum, node)
-        self.assertIn("transactions", blockFromTraceApi)
+        self.assertIn("transactions", blockFromTraceApi["payload"])
         isTrxInBlockFromTraceApi = False
-        for trx in blockFromTraceApi["transactions"]:
+        for trx in blockFromTraceApi["payload"]["transactions"]:
             self.assertIn("id", trx)
             if (trx["id"] == transId) :
                 isTrxInBlockFromTraceApi = True
@@ -104,6 +103,8 @@ class TraceApiPluginTest(unittest.TestCase):
                     self.assertIn('memo', prms)
                 break
         self.assertTrue(isTrxInBlockFromTraceApi)
+        global testSuccessful
+        testSuccessful = True
 
     @classmethod
     def setUpClass(self):
@@ -112,7 +113,7 @@ class TraceApiPluginTest(unittest.TestCase):
 
     @classmethod
     def tearDownClass(self):
-        self.cleanEnv(self, shouldCleanup=False)   # not cleanup to save log in case for further investigation
+        self.cleanEnv(self, shouldCleanup=testSuccessful)
 
 if __name__ == "__main__":
     unittest.main()

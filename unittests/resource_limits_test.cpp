@@ -2,6 +2,7 @@
 
 #include <eosio/chain/config.hpp>
 #include <eosio/chain/resource_limits.hpp>
+#include <eosio/chain/config.hpp>
 #include <eosio/testing/chainbase_fixture.hpp>
 
 #include <boost/test/unit_test.hpp>
@@ -15,7 +16,7 @@ class resource_limits_fixture: private chainbase_fixture<1024*1024>, public reso
    public:
       resource_limits_fixture()
       :chainbase_fixture()
-      ,resource_limits_manager(*chainbase_fixture::_db, []() { return nullptr; })
+      ,resource_limits_manager(*chainbase_fixture::_db, [](bool) { return nullptr; })
       {
          add_indices();
          initialize_database();
@@ -70,8 +71,8 @@ BOOST_AUTO_TEST_SUITE(resource_limits_test)
               expected_elastic_iterations( desired_virtual_limit, config::default_max_block_cpu_usage, 99, 100 ) - 1;
 
       const account_name account(1);
-      initialize_account(account);
-      set_account_limits(account, -1, -1, -1);
+      initialize_account(account, false);
+      set_account_limits(account, -1, -1, -1, false);
       process_account_limit_updates();
 
       // relax from the starting state (congested) to the idle state as fast as possible
@@ -109,8 +110,8 @@ BOOST_AUTO_TEST_SUITE(resource_limits_test)
               expected_elastic_iterations( desired_virtual_limit, config::default_max_block_net_usage, 99, 100 ) - 1;
 
       const account_name account(1);
-      initialize_account(account);
-      set_account_limits(account, -1, -1, -1);
+      initialize_account(account, false);
+      set_account_limits(account, -1, -1, -1, false);
       process_account_limit_updates();
 
       // relax from the starting state (congested) to the idle state as fast as possible
@@ -205,8 +206,8 @@ BOOST_AUTO_TEST_SUITE(resource_limits_test)
 
    BOOST_FIXTURE_TEST_CASE(enforce_block_limits_cpu, resource_limits_fixture) try {
       const account_name account(1);
-      initialize_account(account);
-      set_account_limits(account, -1, -1, -1 );
+      initialize_account(account, false);
+      set_account_limits(account, -1, -1, -1, false);
       process_account_limit_updates();
 
       const uint64_t increment = 1000;
@@ -222,8 +223,8 @@ BOOST_AUTO_TEST_SUITE(resource_limits_test)
 
    BOOST_FIXTURE_TEST_CASE(enforce_block_limits_net, resource_limits_fixture) try {
       const account_name account(1);
-      initialize_account(account);
-      set_account_limits(account, -1, -1, -1 );
+      initialize_account(account, false);
+      set_account_limits(account, -1, -1, -1, false);
       process_account_limit_updates();
 
       const uint64_t increment = 1000;
@@ -244,8 +245,8 @@ BOOST_AUTO_TEST_SUITE(resource_limits_test)
 
 
       const account_name account(1);
-      initialize_account(account);
-      set_account_limits(account, limit, -1, -1 );
+      initialize_account(account, false);
+      set_account_limits(account, limit, -1, -1, false);
       process_account_limit_updates();
 
       for (uint64_t idx = 0; idx < expected_iterations - 1; idx++) {
@@ -259,8 +260,8 @@ BOOST_AUTO_TEST_SUITE(resource_limits_test)
 
    BOOST_FIXTURE_TEST_CASE(enforce_account_ram_limit_underflow, resource_limits_fixture) try {
       const account_name account(1);
-      initialize_account(account);
-      set_account_limits(account, 100, -1, -1 );
+      initialize_account(account, false);
+      set_account_limits(account, 100, -1, -1, false);
       verify_account_ram_usage(account);
       process_account_limit_updates();
       BOOST_REQUIRE_THROW(add_pending_ram_usage(account, -101), transaction_exception);
@@ -269,8 +270,8 @@ BOOST_AUTO_TEST_SUITE(resource_limits_test)
 
    BOOST_FIXTURE_TEST_CASE(enforce_account_ram_limit_overflow, resource_limits_fixture) try {
       const account_name account(1);
-      initialize_account(account);
-      set_account_limits(account, UINT64_MAX, -1, -1 );
+      initialize_account(account, false);
+      set_account_limits(account, UINT64_MAX, -1, -1, false);
       verify_account_ram_usage(account);
       process_account_limit_updates();
       add_pending_ram_usage(account, UINT64_MAX/2);
@@ -289,19 +290,19 @@ BOOST_AUTO_TEST_SUITE(resource_limits_test)
 
 
       const account_name account(1);
-      initialize_account(account);
-      set_account_limits(account, limit, -1, -1 );
+      initialize_account(account, false);
+      set_account_limits(account, limit, -1, -1, false);
       process_account_limit_updates();
       add_pending_ram_usage(account, commit);
       verify_account_ram_usage(account);
 
       for (int idx = 0; idx < expected_iterations - 1; idx++) {
-         set_account_limits(account, limit - increment * idx, -1, -1);
+         set_account_limits(account, limit - increment * idx, -1, -1, false);
          verify_account_ram_usage(account);
          process_account_limit_updates();
       }
 
-      set_account_limits(account, limit - increment * expected_iterations, -1, -1);
+      set_account_limits(account, limit - increment * expected_iterations, -1, -1, false);
       BOOST_REQUIRE_THROW(verify_account_ram_usage(account), ram_usage_exceeded);
    } FC_LOG_AND_RETHROW();
 
@@ -318,10 +319,10 @@ BOOST_AUTO_TEST_SUITE(resource_limits_test)
       double uncongested_cpu_time_per_period = congested_cpu_time_per_period * config::maximum_elastic_resource_multiplier;
       wdump((uncongested_cpu_time_per_period));
 
-      initialize_account( "dan"_n );
-      initialize_account( "everyone"_n );
-      set_account_limits( "dan"_n, 0, 0, user_stake );
-      set_account_limits( "everyone"_n, 0, 0, (total_staked_tokens - user_stake) );
+      initialize_account( "dan"_n, false );
+      initialize_account( "everyone"_n, false );
+      set_account_limits( "dan"_n, 0, 0, user_stake, false );
+      set_account_limits( "everyone"_n, 0, 0, (total_staked_tokens - user_stake), false );
       process_account_limit_updates();
 
       // dan cannot consume more than 34 us per day
@@ -334,4 +335,87 @@ BOOST_AUTO_TEST_SUITE(resource_limits_test)
       add_transaction_usage( {"dan"_n}, 34, 0, 2 + blocks_per_day );
    } FC_LOG_AND_RETHROW()
 
-BOOST_AUTO_TEST_SUITE_END()
+   /**
+     * Test to make sure that get_account_net_limit_ex and get_account_cpu_limit_ex returns proper results, including
+     * 1. the last updated timestamp is always same as the time slot on accumulator.
+     * 2. when no timestamp is given, the current_used should be same as used.
+     * 3. when timestamp is given, if it is earlier than last_usage_update_time, current_used is same as used,
+     *    otherwise, current_used should be the decay value (will be 0 after 1 day)
+    */
+   BOOST_FIXTURE_TEST_CASE(get_account_net_limit_ex_and_get_account_cpu_limit_ex, resource_limits_fixture) try {
+
+      const account_name cpu_test_account("cpuacc");
+      const account_name net_test_account("netacc");
+      constexpr uint32_t net_window = eosio::chain::config::account_net_usage_average_window_ms / eosio::chain::config::block_interval_ms;
+      constexpr uint32_t cpu_window = eosio::chain::config::account_cpu_usage_average_window_ms / eosio::chain::config::block_interval_ms;
+
+      constexpr int64_t unlimited = -1;
+
+      using get_account_limit_ex_func = std::function<std::pair<account_resource_limit, bool>(const resource_limits_manager*, const account_name&, uint32_t, const std::optional<block_timestamp_type>&)>;
+      auto test_get_account_limit_ex = [this](const account_name& test_account, const uint32_t window, get_account_limit_ex_func get_account_limit_ex)
+      {
+         constexpr uint32_t delta_slot = 100;
+         constexpr uint32_t greylist_limit = config::maximum_elastic_resource_multiplier;
+         const block_timestamp_type time_stamp_now(delta_slot + 1);
+         BOOST_CHECK_LT(delta_slot, window);
+         initialize_account(test_account, false);
+         set_account_limits(test_account, unlimited, unlimited, unlimited, false);
+         process_account_limit_updates();
+         // unlimited
+         {
+            const auto ret_unlimited_wo_time_stamp = get_account_limit_ex(this, test_account, greylist_limit, {});
+            const auto ret_unlimited_with_time_stamp = get_account_limit_ex(this, test_account, greylist_limit, time_stamp_now);
+            BOOST_CHECK_EQUAL(ret_unlimited_wo_time_stamp.first.current_used, (int64_t) -1);
+            BOOST_CHECK_EQUAL(ret_unlimited_with_time_stamp.first.current_used, (int64_t) -1);
+            BOOST_CHECK_EQUAL(ret_unlimited_wo_time_stamp.first.last_usage_update_time.slot,
+                              ret_unlimited_with_time_stamp.first.last_usage_update_time.slot);
+
+         }
+         const int64_t cpu_limit = 2048;
+         const int64_t net_limit = 1024;
+         set_account_limits(test_account, -1, net_limit, cpu_limit, false);
+         process_account_limit_updates();
+         // limited, with no usage, current time stamp
+         {
+            const auto ret_limited_init_wo_time_stamp =  get_account_limit_ex(this, test_account, greylist_limit, {});
+            const auto ret_limited_init_with_time_stamp =  get_account_limit_ex(this, test_account, greylist_limit, time_stamp_now);
+            BOOST_CHECK_EQUAL(ret_limited_init_wo_time_stamp.first.current_used, ret_limited_init_wo_time_stamp.first.used);
+            BOOST_CHECK_EQUAL(ret_limited_init_wo_time_stamp.first.current_used, 0);
+            BOOST_CHECK_EQUAL(ret_limited_init_with_time_stamp.first.current_used, ret_limited_init_with_time_stamp.first.used);
+            BOOST_CHECK_EQUAL(ret_limited_init_with_time_stamp.first.current_used, 0);
+            BOOST_CHECK_EQUAL(ret_limited_init_wo_time_stamp.first.last_usage_update_time.slot, 0 );
+            BOOST_CHECK_EQUAL( ret_limited_init_with_time_stamp.first.last_usage_update_time.slot, 0 );
+         }
+         const uint32_t update_slot = time_stamp_now.slot - delta_slot;
+         const int64_t cpu_usage = 100;
+         const int64_t net_usage = 200;
+         add_transaction_usage({test_account}, cpu_usage, net_usage, update_slot );
+         // limited, with some usages, current time stamp
+         {
+            const auto ret_limited_1st_usg_wo_time_stamp =  get_account_limit_ex(this, test_account, greylist_limit, {});
+            const auto ret_limited_1st_usg_with_time_stamp =  get_account_limit_ex(this, test_account, greylist_limit, time_stamp_now);
+            BOOST_CHECK_EQUAL(ret_limited_1st_usg_wo_time_stamp.first.current_used, ret_limited_1st_usg_wo_time_stamp.first.used);
+            BOOST_CHECK_LT(ret_limited_1st_usg_with_time_stamp.first.current_used, ret_limited_1st_usg_with_time_stamp.first.used);
+            BOOST_CHECK_EQUAL(ret_limited_1st_usg_with_time_stamp.first.current_used,
+                              ret_limited_1st_usg_with_time_stamp.first.used * (window - delta_slot) / window);
+            BOOST_CHECK_EQUAL(ret_limited_1st_usg_wo_time_stamp.first.last_usage_update_time.slot, update_slot);
+            BOOST_CHECK_EQUAL(ret_limited_1st_usg_with_time_stamp.first.last_usage_update_time.slot, update_slot);
+         }
+         // limited, with some usages, earlier time stamp
+         const block_timestamp_type earlier_time_stamp(time_stamp_now.slot - delta_slot - 1);
+         {
+            const auto ret_limited_wo_time_stamp =  get_account_limit_ex(this, test_account, greylist_limit, {});
+            const auto ret_limited_with_earlier_time_stamp =  get_account_limit_ex(this, test_account, greylist_limit, earlier_time_stamp);
+            BOOST_CHECK_EQUAL(ret_limited_with_earlier_time_stamp.first.current_used, ret_limited_with_earlier_time_stamp.first.used);
+            BOOST_CHECK_EQUAL(ret_limited_wo_time_stamp.first.current_used, ret_limited_wo_time_stamp.first.used );
+            BOOST_CHECK_EQUAL(ret_limited_wo_time_stamp.first.last_usage_update_time.slot, update_slot);
+            BOOST_CHECK_EQUAL(ret_limited_with_earlier_time_stamp.first.last_usage_update_time.slot, update_slot);
+         }
+      };
+      test_get_account_limit_ex(net_test_account, net_window, &resource_limits_manager::get_account_net_limit_ex);
+      test_get_account_limit_ex(cpu_test_account, cpu_window, &resource_limits_manager::get_account_cpu_limit_ex);
+
+   } FC_LOG_AND_RETHROW()
+
+
+   BOOST_AUTO_TEST_SUITE_END()

@@ -1,10 +1,11 @@
 #include <vector>
 
-#include <eosiolib/crypto.h>
-#include <eosiolib/eosio.hpp>
-#include <eosiolib/print.h>
+#include <eosio/crypto.hpp>
+#include <eosio/eosio.hpp>
+#include <eosio/print.hpp>
 
 #include "test_api.hpp"
+using namespace eosio;
 
 void test_checktime::checktime_pass() {
    int p = 0;
@@ -14,8 +15,7 @@ void test_checktime::checktime_pass() {
    eosio::print(p);
 }
 
-
-void test_checktime::checktime_failure() {
+static void checktime_failure_common() {
    volatile unsigned long long bound{}; // `volatile' necessary to prevent loop optimization
    read_action_data( (char*)&bound, sizeof(bound) );
 
@@ -27,52 +27,57 @@ void test_checktime::checktime_failure() {
    eosio::print(p);
 }
 
+void test_checktime::checktime_failure() {
+   checktime_failure_common();
+}
+
+// used by tests where authorization is not allowed, like read-only transactions
+void test_checktime::checktime_no_auth_failure() {
+   checktime_failure_common();
+}
+
 constexpr size_t size = 20000000;
 
 void test_checktime::checktime_sha1_failure() {
    char* ptr = new char[size];
-   capi_checksum160 res;
-   sha1( ptr, size, &res );
+   auto res = sha1( ptr, size );
 }
 
 void test_checktime::checktime_assert_sha1_failure() {
    char* ptr = new char[size];
-   capi_checksum160 res;
-   assert_sha1( ptr, size, &res );
+   checksum160 res;
+   assert_sha1( ptr, size, res );
 }
 
 void test_checktime::checktime_sha256_failure() {
    char* ptr = new char[size];
-   capi_checksum256 res;
-   sha256( ptr, size, &res );
+   auto res = sha256( ptr, size );
 }
 
 void test_checktime::checktime_assert_sha256_failure() {
    char* ptr = new char[size];
-   capi_checksum256 res;
-   assert_sha256( ptr, size, &res );
+   checksum256 res;
+   assert_sha256( ptr, size, res );
 }
 
 void test_checktime::checktime_sha512_failure() {
    char* ptr = new char[size];
-   capi_checksum512 res;
-   sha512( ptr, size, &res );
+   auto res = sha512( ptr, size );
 }
 
 void test_checktime::checktime_assert_sha512_failure() {
    char* ptr = new char[size];
-   capi_checksum512 res;
-   assert_sha512( ptr, size, &res );
+   checksum512 res;
+   assert_sha512( ptr, size, res );
 }
 
 void test_checktime::checktime_ripemd160_failure() {
    char* ptr = new char[size];
-   capi_checksum160 res;
-   ripemd160( ptr, size, &res );
+   auto res = ripemd160( ptr, size );
 }
 
 void test_checktime::checktime_assert_ripemd160_failure() {
    char* ptr = new char[size];
-   capi_checksum160 res;
-   assert_ripemd160( ptr, size, &res );
+   checksum160 res;
+   assert_ripemd160( ptr, size, res );
 }
