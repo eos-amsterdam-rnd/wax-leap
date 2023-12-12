@@ -139,3 +139,6 @@ Merged with Leap 4.0.4
 
 Adapted snapshot tests for WAX
 
+## Release v4.0.5wax01
+
+Merged with Leap 4.0.5
