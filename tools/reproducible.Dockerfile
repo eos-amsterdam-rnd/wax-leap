@@ -102,7 +102,7 @@ ARG LEAP_BUILD_JOBS
 COPY / /__w/leap/leap
 RUN cmake -S /__w/leap/leap -B build -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_BUILD_TYPE=Release -GNinja && \
     cmake --build build -t package -- ${LEAP_BUILD_JOBS:+-j$LEAP_BUILD_JOBS} && \
-    /__w/leap/leap/tools/tweak-deb.sh build/leap_*.deb
+    /__w/leap/leap/tools/tweak-deb.sh build/wax-leap_*.deb
 
 FROM scratch AS exporter
 COPY --from=build /build/*.deb /build/*.tar.* /
