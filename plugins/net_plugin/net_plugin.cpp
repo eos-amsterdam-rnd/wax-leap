@@ -537,6 +537,14 @@ namespace eosio {
       void start_expire_timer();
       void start_monitors();
 
+      // we currently pause on snapshot generation
+      void wait_if_paused() const {
+         controller& cc = chain_plug->chain();
+         while (cc.is_writing_snapshot()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+         }
+      }
+
       void expire();
       /** \name Peer Timestamps
        *  Time message handling
@@ -2897,6 +2905,8 @@ namespace eosio {
             return;
          }
 
+         my_impl->wait_if_paused();
+
          boost::asio::async_read( *socket,
             pending_message_buffer.get_buffer_sequence_for_boost_async_read(), completion_handler,
             boost::asio::bind_executor( strand,
@@ -3062,7 +3072,7 @@ namespace eosio {
                  ("h", my_impl->get_chain_head_num()));
       if( !my_impl->sync_master->syncing_from_peer() ) { // guard against peer thinking it needs to send us old blocks
          uint32_t lib_num = my_impl->get_chain_lib_num();
-         if( blk_num < lib_num ) {
+         if( blk_num <= lib_num ) {
             fc::unique_lock g( conn_mtx );
             const auto last_sent_lib = last_handshake_sent.last_irreversible_block_num;
             g.unlock();
@@ -3079,6 +3089,13 @@ namespace eosio {
       } else {
          block_sync_bytes_received += message_length;
          my_impl->sync_master->sync_recv_block(shared_from_this(), blk_id, blk_num, false);
+         uint32_t lib_num = my_impl->get_chain_lib_num();
+         if( blk_num <= lib_num ) {
+            cancel_wait();
+
+            pending_message_buffer.advance_read_ptr( message_length );
+            return true;
+         }
       }
 
       auto ds = pending_message_buffer.create_datastream();
@@ -3740,7 +3757,7 @@ namespace eosio {
       connection_ptr c = shared_from_this();
 
       try {
-         if( cc.fetch_block_by_id(blk_id) ) {
+         if( blk_num <= cc.last_irreversible_block_num() || cc.fetch_block_by_id(blk_id) ) {
             c->strand.post( [sync_master = my_impl->sync_master.get(),
                              dispatcher = my_impl->dispatcher.get(), c, blk_id, blk_num]() {
                dispatcher->add_peer_block( blk_id, c->connection_id );
@@ -4590,7 +4607,6 @@ namespace eosio {
    // called from any thread
    void connections_manager::start_conn_timers() {
       start_conn_timer(connector_period, {}, timer_type::check); // this locks mutex
-      start_conn_timer(connector_period, {}, timer_type::stats); // this locks mutex
       if (update_p2p_connection_metrics) {
          start_conn_timer(connector_period + connector_period / 2, {}, timer_type::stats); // this locks mutex
       }

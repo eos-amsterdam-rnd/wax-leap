@@ -251,6 +251,7 @@ struct controller_impl {
    named_thread_pool<chain>        thread_pool;
    deep_mind_handler*              deep_mind_logger = nullptr;
    bool                            okay_to_print_integrity_hash_on_stop = false;
+   std::atomic<bool>               writing_snapshot = false;
 
    thread_local static platform_timer timer; // a copy for main thread and each read-only thread
 #if defined(EOSIO_EOS_VM_RUNTIME_ENABLED) || defined(EOSIO_EOS_VM_JIT_RUNTIME_ENABLED)
@@ -2411,7 +2412,18 @@ struct controller_impl {
             } // end if exception
          } /// end for each block in branch
 
-         ilog("successfully switched fork to new head ${new_head_id}", ("new_head_id", new_head->id));
+         if (fc::logger::get(DEFAULT_LOGGER).is_enabled(fc::log_level::info)) {
+            auto get_ids = [&](auto& container)->std::string {
+               std::string ids;
+               for(auto ritr = container.rbegin(), e = container.rend(); ritr != e; ++ritr) {
+                  ids += std::to_string((*ritr)->block_num) + ":" + (*ritr)->id.str() + ",";
+               }
+               if (!ids.empty()) ids.resize(ids.size()-1);
+               return ids;
+            };
+            ilog("successfully switched fork to new head ${new_head_id}, removed {${rm_ids}}, applied {${new_ids}}",
+                ("new_head_id", new_head->id)("rm_ids", get_ids(branches.second))("new_ids", get_ids(branches.first)));
+         }
       } else {
          head_changed = false;
       }
@@ -3235,7 +3247,15 @@ fc::sha256 controller::calculate_integrity_hash() { try {
 
 void controller::write_snapshot( const snapshot_writer_ptr& snapshot ) {
    EOS_ASSERT( !my->pending, block_validate_exception, "cannot take a consistent snapshot with a pending block" );
-   return my->add_to_snapshot(snapshot);
+   my->writing_snapshot.store(true, std::memory_order_release);
+   fc::scoped_exit<std::function<void()>> e = [&] {
+      my->writing_snapshot.store(false, std::memory_order_release);
+   };
+   my->add_to_snapshot(snapshot);
+}
+
+bool controller::is_writing_snapshot() const {
+   return my->writing_snapshot.load(std::memory_order_acquire);
 }
 
 int64_t controller::set_proposed_producers( vector<producer_authority> producers ) {
