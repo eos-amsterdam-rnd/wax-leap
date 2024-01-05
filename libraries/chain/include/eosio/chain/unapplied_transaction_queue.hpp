@@ -2,7 +2,7 @@
 
 #include <eosio/chain/transaction_metadata.hpp>
 #include <eosio/chain/trace.hpp>
-#include <eosio/chain/block_state.hpp>
+#include <eosio/chain/block_state_legacy.hpp>
 #include <eosio/chain/exceptions.hpp>
 
 #include <boost/multi_index_container.hpp>
@@ -114,10 +114,10 @@ public:
       return true;
    }
 
-   void clear_applied( const block_state_ptr& bs ) {
+   void clear_applied( const signed_block_ptr& block ) {
       if( empty() ) return;
       auto& idx = queue.get<by_trx_id>();
-      for( const auto& receipt : bs->block->transactions ) {
+      for( const auto& receipt : block->transactions ) {
          if( std::holds_alternative<packed_transaction>(receipt.trx) ) {
             const auto& pt = std::get<packed_transaction>(receipt.trx);
             auto itr = idx.find( pt.id() );
@@ -136,7 +136,7 @@ public:
    void add_forked( const branch_type& forked_branch ) {
       // forked_branch is in reverse order
       for( auto ritr = forked_branch.rbegin(), rend = forked_branch.rend(); ritr != rend; ++ritr ) {
-         const block_state_ptr& bsptr = *ritr;
+         const block_state_legacy_ptr& bsptr = *ritr;
          for( auto itr = bsptr->trxs_metas().begin(), end = bsptr->trxs_metas().end(); itr != end; ++itr ) {
             const auto& trx = *itr;
             auto insert_itr = queue.insert( { trx, trx_enum_type::forked } );

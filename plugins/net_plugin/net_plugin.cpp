@@ -528,14 +528,22 @@ namespace eosio {
       uint32_t get_chain_lib_num() const;
       uint32_t get_chain_head_num() const;
 
-      void on_accepted_block_header( const block_state_ptr& bs );
-      void on_accepted_block( const block_state_ptr& bs );
+      void on_accepted_block_header( const signed_block_ptr& block, const block_id_type& id );
+      void on_accepted_block();
 
       void transaction_ack(const std::pair<fc::exception_ptr, packed_transaction_ptr>&);
-      void on_irreversible_block( const block_state_ptr& block );
+      void on_irreversible_block( const block_id_type& id, uint32_t block_num );
 
       void start_expire_timer();
       void start_monitors();
+
+      // we currently pause on snapshot generation
+      void wait_if_paused() const {
+         controller& cc = chain_plug->chain();
+         while (cc.is_writing_snapshot()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+         }
+      }
 
       void expire();
       /** \name Peer Timestamps
@@ -1090,7 +1098,7 @@ namespace eosio {
       // returns calculated number of blocks combined latency
       uint32_t calc_block_latency();
 
-      void process_signed_block( const block_id_type& id, signed_block_ptr block, block_state_ptr bsp );
+      void process_signed_block( const block_id_type& id, signed_block_ptr block, block_state_legacy_ptr bsp );
 
       fc::variant_object get_logger_variant() const {
          fc::mutable_variant_object mvo;
@@ -2897,6 +2905,8 @@ namespace eosio {
             return;
          }
 
+         my_impl->wait_if_paused();
+
          boost::asio::async_read( *socket,
             pending_message_buffer.get_buffer_sequence_for_boost_async_read(), completion_handler,
             boost::asio::bind_executor( strand,
@@ -3062,7 +3072,7 @@ namespace eosio {
                  ("h", my_impl->get_chain_head_num()));
       if( !my_impl->sync_master->syncing_from_peer() ) { // guard against peer thinking it needs to send us old blocks
          uint32_t lib_num = my_impl->get_chain_lib_num();
-         if( blk_num < lib_num ) {
+         if( blk_num <= lib_num ) {
             fc::unique_lock g( conn_mtx );
             const auto last_sent_lib = last_handshake_sent.last_irreversible_block_num;
             g.unlock();
@@ -3079,6 +3089,13 @@ namespace eosio {
       } else {
          block_sync_bytes_received += message_length;
          my_impl->sync_master->sync_recv_block(shared_from_this(), blk_id, blk_num, false);
+         uint32_t lib_num = my_impl->get_chain_lib_num();
+         if( blk_num <= lib_num ) {
+            cancel_wait();
+
+            pending_message_buffer.advance_read_ptr( message_length );
+            return true;
+         }
       }
 
       auto ds = pending_message_buffer.create_datastream();
@@ -3689,7 +3706,7 @@ namespace eosio {
             return;
          }
 
-         block_state_ptr bsp;
+         block_state_legacy_ptr bsp;
          bool exception = false;
          try {
             // this may return null if block is not immediately ready to be processed
@@ -3733,14 +3750,14 @@ namespace eosio {
    }
 
    // called from application thread
-   void connection::process_signed_block( const block_id_type& blk_id, signed_block_ptr block, block_state_ptr bsp ) {
+   void connection::process_signed_block( const block_id_type& blk_id, signed_block_ptr block, block_state_legacy_ptr bsp ) {
       controller& cc = my_impl->chain_plug->chain();
       uint32_t blk_num = block_header::num_from_id(blk_id);
       // use c in this method instead of this to highlight that all methods called on c-> must be thread safe
       connection_ptr c = shared_from_this();
 
       try {
-         if( cc.fetch_block_by_id(blk_id) ) {
+         if( blk_num <= cc.last_irreversible_block_num() || cc.fetch_block_by_id(blk_id) ) {
             c->strand.post( [sync_master = my_impl->sync_master.get(),
                              dispatcher = my_impl->dispatcher.get(), c, blk_id, blk_num]() {
                dispatcher->add_peer_block( blk_id, c->connection_id );
@@ -3882,23 +3899,23 @@ namespace eosio {
    }
 
    // called from application thread
-   void net_plugin_impl::on_accepted_block_header(const block_state_ptr& bs) {
+   void net_plugin_impl::on_accepted_block_header(const signed_block_ptr& block, const block_id_type& id) {
       update_chain_info();
 
-      dispatcher->strand.post([bs]() {
-         fc_dlog(logger, "signaled accepted_block_header, blk num = ${num}, id = ${id}", ("num", bs->block_num)("id", bs->id));
-         my_impl->dispatcher->bcast_block(bs->block, bs->id);
+      dispatcher->strand.post([block, id]() {
+         fc_dlog(logger, "signaled accepted_block_header, blk num = ${num}, id = ${id}", ("num", block->block_num())("id", id));
+         my_impl->dispatcher->bcast_block(block, id);
       });
    }
 
-   void net_plugin_impl::on_accepted_block(const block_state_ptr& ) {
+   void net_plugin_impl::on_accepted_block() {
       on_pending_schedule(chain_plug->chain().pending_producers());
       on_active_schedule(chain_plug->chain().active_producers());
    }
 
    // called from application thread
-   void net_plugin_impl::on_irreversible_block( const block_state_ptr& block) {
-      fc_dlog( logger, "on_irreversible_block, blk num = ${num}, id = ${id}", ("num", block->block_num)("id", block->id) );
+   void net_plugin_impl::on_irreversible_block( const block_id_type& id, uint32_t block_num) {
+      fc_dlog( logger, "on_irreversible_block, blk num = ${num}, id = ${id}", ("num", block_num)("id", id) );
       update_chain_info();
    }
 
@@ -4284,15 +4301,17 @@ namespace eosio {
 
       {
          chain::controller& cc = chain_plug->chain();
-         cc.accepted_block_header.connect( [my = shared_from_this()]( const block_state_ptr& s ) {
-            my->on_accepted_block_header( s );
+         cc.accepted_block_header.connect( [my = shared_from_this()]( const block_signal_params& t ) {
+            const auto& [ block, id ] = t;
+            my->on_accepted_block_header( block, id );
          } );
 
-         cc.accepted_block.connect( [my = shared_from_this()]( const block_state_ptr& s ) {
-            my->on_accepted_block( s );
+         cc.accepted_block.connect( [my = shared_from_this()]( const block_signal_params& t ) {
+            my->on_accepted_block();
          } );
-         cc.irreversible_block.connect( [my = shared_from_this()]( const block_state_ptr& s ) {
-            my->on_irreversible_block( s );
+         cc.irreversible_block.connect( [my = shared_from_this()]( const block_signal_params& t ) {
+            const auto& [ block, id ] = t;
+            my->on_irreversible_block( id, block->block_num() );
          } );
       }
 
@@ -4590,7 +4609,6 @@ namespace eosio {
    // called from any thread
    void connections_manager::start_conn_timers() {
       start_conn_timer(connector_period, {}, timer_type::check); // this locks mutex
-      start_conn_timer(connector_period, {}, timer_type::stats); // this locks mutex
       if (update_p2p_connection_metrics) {
          start_conn_timer(connector_period + connector_period / 2, {}, timer_type::stats); // this locks mutex
       }
